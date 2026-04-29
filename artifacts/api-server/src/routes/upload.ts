@@ -79,7 +79,7 @@ function splitIntoParagraphs(text: string): string[] {
   return text
     .split(/\n{2,}/)
     .map(p => p.replace(/\n/g, " ").replace(/\s+/g, " ").trim())
-    .filter(p => p.length > 15);
+    .filter(p => p.length > 3);
 }
 
 // POST /books/upload - multipart file upload (TXT or EPUB)

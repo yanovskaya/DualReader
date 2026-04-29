@@ -5,9 +5,11 @@ interface DictionaryPanelProps {
   word: string;
   context?: string;
   onClose: () => void;
+  /** When true, renders inline without its own close button (parent panel handles it) */
+  inline?: boolean;
 }
 
-export function DictionaryPanel({ word, context, onClose }: DictionaryPanelProps) {
+export function DictionaryPanel({ word, context, onClose, inline }: DictionaryPanelProps) {
   const clean = word.toLowerCase().replace(/[^\w-]/g, "");
 
   const { data: entry, isLoading, isError } = useLookupWord(
@@ -15,38 +17,41 @@ export function DictionaryPanel({ word, context, onClose }: DictionaryPanelProps
     { query: { enabled: !!clean, queryKey: getLookupWordQueryKey({ word: clean, context }) } }
   );
 
-  return (
-    <div className="flex items-start gap-3">
-      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
-      <div className="flex-1 min-w-0">
-        {isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Looking up <em>{word}</em>...
-          </div>
-        ) : isError ? (
-          <p className="text-sm text-destructive">Could not look up «{word}».</p>
-        ) : entry ? (
-          <>
-            <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-              <span className="font-semibold text-foreground">{word}</span>
-              {entry.partOfSpeech && (
-                <span className="text-xs text-muted-foreground italic">{entry.partOfSpeech}</span>
-              )}
-            </div>
-            <p className="text-sm text-foreground/90 leading-relaxed">
-              — {entry.translations.join(", ")}
-            </p>
-            {entry.examples && entry.examples.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1 italic border-l-2 border-primary/20 pl-2 leading-relaxed">
-                {entry.examples[0]}
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">No translation found for «{word}».</p>
+  const content = () => {
+    if (isLoading) return (
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+        <em>{word}</em>...
+      </span>
+    );
+    if (isError) return <span className="text-destructive">Не удалось найти «{word}».</span>;
+    if (!entry) return <span className="text-muted-foreground">Нет перевода для «{word}».</span>;
+    return (
+      <span>
+        <span className="font-semibold">{word}</span>
+        {entry.partOfSpeech && <span className="text-muted-foreground italic ml-1.5 text-xs">{entry.partOfSpeech}</span>}
+        {" — "}
+        <span>{entry.translations.join(", ")}</span>
+        {entry.examples && entry.examples[0] && (
+          <span className="text-muted-foreground"> · <em>{entry.examples[0]}</em></span>
         )}
+      </span>
+    );
+  };
+
+  if (inline) {
+    return (
+      <div className="flex items-start gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 mt-[0.35em]" />
+        <p className="text-sm text-foreground/90 leading-[1.55em] flex-1">{content()}</p>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2">
+      <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 mt-[0.35em]" />
+      <p className="text-sm text-foreground/90 leading-[1.55em] flex-1">{content()}</p>
       <button
         onClick={onClose}
         className="h-5 w-5 shrink-0 rounded-full flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
