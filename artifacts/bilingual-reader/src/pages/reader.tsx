@@ -177,34 +177,47 @@ export default function ReaderPage() {
       {/* ── Translation / Dictionary panel ───────────────────────────── */}
       {panel.kind !== "hidden" && (
         <div className="shrink-0 bg-white border-b-2 border-primary/15 shadow-sm z-10">
-          <div className="max-w-2xl mx-auto px-4 py-0">
-            <div className="flex items-start gap-2 py-2.5">
-              {/* scrollable text area — exactly 2 lines tall */}
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-start gap-2 px-4 py-2">
+              {/*
+                Scrollable area: exactly 2 lines visible (44px at 14px/line-height-1.57),
+                overflow-y scroll so user can swipe to read the rest.
+              */}
               <div
                 ref={panelRef}
-                style={{ maxHeight: "3.1em", lineHeight: "1.55em", overflowY: "auto" }}
-                className="flex-1 min-w-0 scrollbar-thin"
+                className="flex-1 min-w-0"
+                style={{
+                  maxHeight: "44px",
+                  overflowY: "scroll",
+                  WebkitOverflowScrolling: "touch" as never,
+                }}
               >
                 {panel.kind === "paragraph" ? (
                   panel.paragraph.isTranslated && panel.paragraph.translatedText ? (
-                    <p className="text-sm text-foreground/90 font-serif leading-[1.55em]">
+                    <p className="text-sm font-serif text-foreground/90" style={{ lineHeight: "22px" }}>
                       {panel.paragraph.translatedText}
                     </p>
                   ) : (
-                    <p className="text-sm text-muted-foreground italic flex items-center gap-1.5 leading-[1.55em]">
+                    <p className="text-sm text-muted-foreground italic flex items-center gap-1.5" style={{ lineHeight: "22px" }}>
                       <Loader2 className="h-3 w-3 animate-spin shrink-0" />
                       Перевод ещё не готов...
                     </p>
                   )
                 ) : panel.kind === "sentence" ? (
-                  <p className="text-sm text-foreground/90 font-serif leading-[1.55em]">
-                    <span className="inline-flex items-center gap-1 mr-1">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 inline-block" />
-                    </span>
-                    {panel.sentence}
-                  </p>
+                  /* Word tapped: matched sentence first, full translation below */
+                  <div style={{ lineHeight: "22px" }}>
+                    <p className="text-sm font-serif text-foreground">
+                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 mr-1.5 align-middle" />
+                      {panel.sentence}
+                    </p>
+                    {panel.paragraph.translatedText &&
+                      panel.paragraph.translatedText.trim() !== panel.sentence.trim() && (
+                        <p className="text-sm font-serif text-foreground/60 mt-0.5">
+                          {panel.paragraph.translatedText}
+                        </p>
+                      )}
+                  </div>
                 ) : (
-                  /* dict */
                   <DictionaryPanel
                     word={panel.word}
                     context={panel.paragraph.originalText}
@@ -214,14 +227,12 @@ export default function ReaderPage() {
                 )}
               </div>
 
-              {panel.kind !== "dict" && (
-                <button
-                  onClick={() => setPanel({ kind: "hidden" })}
-                  className="h-5 w-5 shrink-0 rounded-full flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors mt-0.5"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
+              <button
+                onClick={() => setPanel({ kind: "hidden" })}
+                className="h-6 w-6 shrink-0 rounded-full flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         </div>

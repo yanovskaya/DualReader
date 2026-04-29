@@ -83,10 +83,7 @@ export function BookParagraph({
   // ── Normal paragraph ─────────────────────────────────────────────────────
   return (
     <div
-      className={cn(
-        "px-1 py-2 rounded-lg cursor-pointer transition-colors select-none",
-        isSelected ? "bg-amber-50" : "hover:bg-muted/40"
-      )}
+      className="px-1 py-2 rounded-lg cursor-pointer transition-colors select-none hover:bg-muted/40"
       onClick={handleParagraphClick}
     >
       <p className="text-[1.05rem] leading-[1.85] font-serif text-foreground tracking-[0.01em]">
