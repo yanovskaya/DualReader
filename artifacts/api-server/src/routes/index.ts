@@ -3,10 +3,12 @@ import healthRouter from "./health";
 import booksRouter from "./books";
 import translationsRouter from "./translations";
 import dictionaryRouter from "./dictionary";
+import uploadRouter from "./upload";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(uploadRouter);
 router.use(booksRouter);
 router.use(translationsRouter);
 router.use(dictionaryRouter);
