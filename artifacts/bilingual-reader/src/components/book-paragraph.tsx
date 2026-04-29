@@ -1,37 +1,44 @@
 import { useCallback, useRef } from "react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { splitSentences, sentenceIdxForCharPos, isHeadingParagraph } from "@/lib/sentences";
+import { sentenceIdxForCharPos, isHeadingParagraph } from "@/lib/sentences";
 import type { ThemeColors } from "@/hooks/use-reader-settings";
+
+export interface SelectedToken {
+  paragraphId: number;
+  charStart: number;
+  word: string;
+}
 
 interface BookParagraphProps {
   paragraph: Paragraph;
-  isSelected: boolean;
-  selectedWord: string | null;
+  selectedToken: SelectedToken | null;
   onClick: (p: Paragraph) => void;
-  onWordClick: (word: string, sentenceIdx: number, p: Paragraph) => void;
+  onWordClick: (word: string, sentenceIdx: number, charStart: number, p: Paragraph) => void;
   onWordDoubleClick: (word: string, p: Paragraph) => void;
   colors: ThemeColors;
   bodyFontSize: string;
   headingFontSize: string;
+  lineHeight: string;
 }
 
 export function BookParagraph({
   paragraph,
-  selectedWord,
+  selectedToken,
   onClick,
   onWordClick,
   onWordDoubleClick,
   colors,
   bodyFontSize,
   headingFontSize,
+  lineHeight,
 }: BookParagraphProps) {
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingWord = useRef<{ word: string; sentenceIdx: number } | null>(null);
+  const pendingWord = useRef<{ word: string; sentenceIdx: number; charStart: number } | null>(null);
 
   const text = paragraph.originalText;
   const isHeading = isHeadingParagraph(text);
 
-  // Tokenize + sentence mapping
+  // Tokenize + track char positions
   const rawTokens = text.match(/[\w''-]+|[^\w\s]+|\s+/g) || [];
   let charPos = 0;
   const tokens = rawTokens.map(token => {
@@ -39,11 +46,11 @@ export function BookParagraph({
     charPos += token.length;
     const isWord = /[\w''-]+/.test(token) && token.trim().length > 0;
     const sentenceIdx = isWord ? sentenceIdxForCharPos(text, start) : 0;
-    return { token, isWord, sentenceIdx };
+    return { token, isWord, sentenceIdx, charStart: start };
   });
 
   const handleWordInteraction = useCallback(
-    (word: string, sentenceIdx: number) => {
+    (word: string, sentenceIdx: number, charStart: number) => {
       if (clickTimer.current) {
         clearTimeout(clickTimer.current);
         clickTimer.current = null;
@@ -51,11 +58,11 @@ export function BookParagraph({
         onWordDoubleClick(word, paragraph);
         return;
       }
-      pendingWord.current = { word, sentenceIdx };
+      pendingWord.current = { word, sentenceIdx, charStart };
       clickTimer.current = setTimeout(() => {
         clickTimer.current = null;
         if (pendingWord.current) {
-          onWordClick(pendingWord.current.word, pendingWord.current.sentenceIdx, paragraph);
+          onWordClick(pendingWord.current.word, pendingWord.current.sentenceIdx, pendingWord.current.charStart, paragraph);
           pendingWord.current = null;
         }
       }, 280);
@@ -71,7 +78,7 @@ export function BookParagraph({
     [paragraph, onClick]
   );
 
-  // ── Chapter heading ───────────────────────────────────────────────────────
+  // ── Chapter heading ──────────────────────────────────────────────────────
   if (isHeading) {
     return (
       <div style={{ paddingTop: 36, paddingBottom: 12 }}>
@@ -90,37 +97,32 @@ export function BookParagraph({
     );
   }
 
-  // ── Normal paragraph ──────────────────────────────────────────────────────
+  // ── Normal paragraph ─────────────────────────────────────────────────────
   return (
-    <div
-      onClick={handleParagraphClick}
-      style={{
-        padding: "4px 4px",
-        borderRadius: 8,
-        cursor: "pointer",
-        userSelect: "none",
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = colors.hover; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-    >
+    <div onClick={handleParagraphClick} style={{ padding: "3px 0", cursor: "pointer" }}>
       <p style={{
         fontSize: bodyFontSize,
-        lineHeight: 1.85,
+        lineHeight,
         fontFamily: "Georgia, 'Times New Roman', serif",
         color: colors.text,
         margin: 0,
         letterSpacing: "0.01em",
       }}>
-        {tokens.map(({ token, isWord, sentenceIdx }, i) => {
+        {tokens.map(({ token, isWord, sentenceIdx, charStart }, i) => {
           if (!isWord) return <span key={i}>{token}</span>;
+
           const clean = token.replace(/^[^\w]+|[^\w]+$/g, "");
-          const isHighlighted = !!selectedWord && clean.toLowerCase() === selectedWord.toLowerCase();
+          // Highlight ONLY the exact token that was clicked (by charStart position in this paragraph)
+          const isHighlighted =
+            selectedToken !== null &&
+            selectedToken.paragraphId === paragraph.id &&
+            selectedToken.charStart === charStart;
 
           return (
             <span
               key={i}
               data-word="1"
-              onClick={e => { e.stopPropagation(); handleWordInteraction(clean, sentenceIdx); }}
+              onClick={e => { e.stopPropagation(); handleWordInteraction(clean, sentenceIdx, charStart); }}
               style={{
                 borderRadius: 3,
                 cursor: "pointer",

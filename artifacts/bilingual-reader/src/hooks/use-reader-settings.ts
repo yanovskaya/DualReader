@@ -23,7 +23,7 @@ export interface ThemeColors {
 export const THEMES: Record<Theme, ThemeColors> = {
   light: {
     bg: "#ffffff",
-    panelBg: "#f8f8f8",
+    panelBg: "#f4f4f4",
     headerBg: "rgba(255,255,255,0.95)",
     border: "rgba(0,0,0,0.08)",
     text: "#1a1a1a",
@@ -56,11 +56,12 @@ export const THEMES: Record<Theme, ThemeColors> = {
   },
 };
 
-export const FONT_SIZES: Record<FontSize, { body: string; heading: string }> = {
-  sm: { body: "15px", heading: "18px" },
-  md: { body: "17px", heading: "21px" },
-  lg: { body: "19px", heading: "24px" },
-  xl: { body: "22px", heading: "28px" },
+// Larger defaults — comfortable for mobile reading
+export const FONT_SIZES: Record<FontSize, { body: string; heading: string; lineHeight: string }> = {
+  sm:  { body: "17px", heading: "20px", lineHeight: "1.80" },
+  md:  { body: "19px", heading: "23px", lineHeight: "1.85" },
+  lg:  { body: "21px", heading: "26px", lineHeight: "1.90" },
+  xl:  { body: "24px", heading: "30px", lineHeight: "1.90" },
 };
 
 const STORAGE_KEY = "lingua_reader_settings";
@@ -70,7 +71,7 @@ function load(): ReaderSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return { theme: "sepia", fontSize: "md", ...JSON.parse(raw) };
   } catch {}
-  return { theme: "sepia", fontSize: "md" };
+  return { theme: "sepia", fontSize: "md" };   // md = 19px — comfortable default
 }
 
 export function useReaderSettings() {
