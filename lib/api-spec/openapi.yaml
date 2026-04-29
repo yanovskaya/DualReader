@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Bilingual Reader API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: books
+    description: Book management
+  - name: translations
+    description: Translation operations
+  - name: dictionary
+    description: Dictionary lookup
 paths:
   /healthz:
     get:
@@ -24,6 +30,223 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /books:
+    get:
+      operationId: listBooks
+      tags: [books]
+      summary: List all books
+      responses:
+        "200":
+          description: List of books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Book"
+    post:
+      operationId: createBook
+      tags: [books]
+      summary: Upload a new book
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookBody"
+      responses:
+        "201":
+          description: Book created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+
+  /books/{id}:
+    get:
+      operationId: getBook
+      tags: [books]
+      summary: Get a book by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Book details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "404":
+          description: Book not found
+    delete:
+      operationId: deleteBook
+      tags: [books]
+      summary: Delete a book
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /books/{id}/paragraphs:
+    get:
+      operationId: listParagraphs
+      tags: [books]
+      summary: List paragraphs of a book
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated paragraphs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParagraphsPage"
+
+  /books/{id}/translation-status:
+    get:
+      operationId: getTranslationStatus
+      tags: [translations]
+      summary: Get translation progress for a book
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Translation status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslationStatus"
+
+  /books/{id}/translate:
+    post:
+      operationId: startTranslation
+      tags: [translations]
+      summary: Start translating a book (SSE stream)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartTranslationBody"
+      responses:
+        "200":
+          description: SSE stream of translation progress
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /paragraphs/{id}/translation:
+    get:
+      operationId: getParagraphTranslation
+      tags: [translations]
+      summary: Get the translation for a specific paragraph
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paragraph with translation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Paragraph"
+        "404":
+          description: Not found
+
+  /dictionary/lookup:
+    get:
+      operationId: lookupWord
+      tags: [dictionary]
+      summary: Look up a word in the English-Russian dictionary
+      parameters:
+        - name: word
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: context
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dictionary entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DictionaryEntry"
+
+  /dictionary/recent:
+    get:
+      operationId: getRecentLookups
+      tags: [dictionary]
+      summary: Get recently looked up words
+      responses:
+        "200":
+          description: Recent word lookups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DictionaryEntry"
+
+  /books/{id}/stats:
+    get:
+      operationId: getBookStats
+      tags: [books]
+      summary: Get reading stats for a book
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Book stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +257,168 @@ components:
       required:
         - status
 
+    Book:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        language:
+          type: string
+        totalParagraphs:
+          type: integer
+        translatedParagraphs:
+          type: integer
+        translationStatus:
+          type: string
+          enum: [pending, in_progress, completed]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - language
+        - totalParagraphs
+        - translatedParagraphs
+        - translationStatus
+        - createdAt
+
+    CreateBookBody:
+      type: object
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        language:
+          type: string
+          default: en
+        content:
+          type: string
+          description: Full text content of the book
+      required:
+        - title
+        - content
+
+    Paragraph:
+      type: object
+      properties:
+        id:
+          type: integer
+        bookId:
+          type: integer
+        position:
+          type: integer
+        originalText:
+          type: string
+        translatedText:
+          type: string
+          nullable: true
+        isTranslated:
+          type: boolean
+      required:
+        - id
+        - bookId
+        - position
+        - originalText
+        - isTranslated
+
+    ParagraphsPage:
+      type: object
+      properties:
+        paragraphs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Paragraph"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - paragraphs
+        - total
+        - page
+        - pageSize
+        - totalPages
+
+    TranslationStatus:
+      type: object
+      properties:
+        bookId:
+          type: integer
+        status:
+          type: string
+          enum: [pending, in_progress, completed]
+        totalParagraphs:
+          type: integer
+        translatedParagraphs:
+          type: integer
+        progressPercent:
+          type: number
+      required:
+        - bookId
+        - status
+        - totalParagraphs
+        - translatedParagraphs
+        - progressPercent
+
+    StartTranslationBody:
+      type: object
+      properties:
+        batchSize:
+          type: integer
+          default: 10
+          description: Number of paragraphs to translate per batch
+
+    DictionaryEntry:
+      type: object
+      properties:
+        word:
+          type: string
+        translations:
+          type: array
+          items:
+            type: string
+        partOfSpeech:
+          type: string
+        examples:
+          type: array
+          items:
+            type: string
+        lookedUpAt:
+          type: string
+          format: date-time
+      required:
+        - word
+        - translations
+
+    BookStats:
+      type: object
+      properties:
+        bookId:
+          type: integer
+        totalParagraphs:
+          type: integer
+        translatedParagraphs:
+          type: integer
+        wordCount:
+          type: integer
+        uniqueWordsLookedUp:
+          type: integer
+        progressPercent:
+          type: number
+      required:
+        - bookId
+        - totalParagraphs
+        - translatedParagraphs
+        - wordCount
+        - uniqueWordsLookedUp
+        - progressPercent
