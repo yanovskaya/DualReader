@@ -1,176 +1,240 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, Link } from "wouter";
-import { Layout } from "@/components/layout";
-import { ParagraphView } from "@/components/paragraph-view";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import { 
-  useGetBook, 
-  getGetBookQueryKey, 
-  useListParagraphs, 
+import {
+  useGetBook,
+  getGetBookQueryKey,
+  useListParagraphs,
   getListParagraphsQueryKey,
   useGetTranslationStatus,
-  getGetTranslationStatusQueryKey
+  getGetTranslationStatusQueryKey,
 } from "@workspace/api-client-react";
-import { Loader2, ChevronLeft, ChevronRight, BarChart3, AlertCircle } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
+import { Loader2, ChevronLeft, ChevronRight, X, BookOpen, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BookParagraph } from "@/components/book-paragraph";
+import { DictionaryPanel } from "@/components/dictionary-panel";
+
+const PAGE_SIZE = 20;
+
+function storageKey(bookId: number) { return `lingua_page_${bookId}`; }
+
+function getSavedPage(bookId: number): number {
+  try { return parseInt(localStorage.getItem(storageKey(bookId)) || "1", 10) || 1; } catch { return 1; }
+}
+function savePage(bookId: number, page: number) {
+  try { localStorage.setItem(storageKey(bookId), String(page)); } catch {}
+}
 
 export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
   const bookId = parseInt(id || "0", 10);
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
+
+  const [page, setPage] = useState(() => getSavedPage(bookId));
+  const [selectedParagraph, setSelectedParagraph] = useState<Paragraph | null>(null);
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
+  const [showDict, setShowDict] = useState(false);
+  const mainRef = useRef<HTMLDivElement>(null);
 
   const { data: book, isLoading: isLoadingBook } = useGetBook(bookId, {
-    query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) }
+    query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
   });
 
   const { data: statusData } = useGetTranslationStatus(bookId, {
-    query: { 
-      enabled: !!bookId, 
+    query: {
+      enabled: !!bookId,
       queryKey: getGetTranslationStatusQueryKey(bookId),
-      refetchInterval: (data) => (data?.state?.data?.status === 'in_progress' || data?.state?.data?.status === 'pending') ? 3000 : false
-    }
+      refetchInterval: (d) =>
+        d?.state?.data?.status === "in_progress" || d?.state?.data?.status === "pending" ? 4000 : false,
+    },
   });
 
+  const isTranslating =
+    statusData?.status === "in_progress" || statusData?.status === "pending";
+
   const { data: paragraphsData, isLoading: isLoadingParagraphs } = useListParagraphs(
-    bookId, 
-    { page, pageSize },
-    { 
-      query: { 
-        enabled: !!bookId, 
-        queryKey: getListParagraphsQueryKey(bookId, { page, pageSize }),
-        // Refetch paragraphs if translation is in progress to get newly translated ones
-        refetchInterval: statusData?.status === 'in_progress' ? 3000 : false
-      } 
+    bookId,
+    { page, pageSize: PAGE_SIZE },
+    {
+      query: {
+        enabled: !!bookId,
+        queryKey: getListParagraphsQueryKey(bookId, { page, pageSize: PAGE_SIZE }),
+        refetchInterval: isTranslating ? 4000 : false,
+      },
     }
   );
 
-  const isInProgress = statusData?.status === 'in_progress' || statusData?.status === 'pending';
+  // Keep selectedParagraph fresh when paragraphs refetch
+  useEffect(() => {
+    if (!selectedParagraph || !paragraphsData?.paragraphs) return;
+    const fresh = paragraphsData.paragraphs.find((p) => p.id === selectedParagraph.id);
+    if (fresh) setSelectedParagraph(fresh);
+  }, [paragraphsData]);
+
+  const goToPage = useCallback(
+    (nextPage: number) => {
+      setPage(nextPage);
+      savePage(bookId, nextPage);
+      setSelectedParagraph(null);
+      setSelectedWord(null);
+      setShowDict(false);
+      mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [bookId]
+  );
+
+  const handleParagraphClick = useCallback((p: Paragraph) => {
+    setSelectedParagraph((prev) => (prev?.id === p.id ? null : p));
+    setSelectedWord(null);
+    setShowDict(false);
+  }, []);
+
+  const handleWordDoubleClick = useCallback((word: string, p: Paragraph) => {
+    setSelectedParagraph(p);
+    setSelectedWord(word);
+    setShowDict(true);
+  }, []);
+
+  const closePanel = () => {
+    setSelectedParagraph(null);
+    setSelectedWord(null);
+    setShowDict(false);
+  };
+
+  const progress = book
+    ? Math.round(((page - 1) * PAGE_SIZE / Math.max(book.totalParagraphs, 1)) * 100)
+    : 0;
+
+  const totalPages = paragraphsData?.totalPages ?? 1;
 
   if (isLoadingBook) {
     return (
-      <Layout>
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </Layout>
+      <div className="h-screen flex items-center justify-center bg-[#faf9f6]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+      </div>
     );
   }
 
   if (!book) {
     return (
-      <Layout>
-        <div className="container mx-auto max-w-4xl px-4 py-24 text-center">
-          <Alert variant="destructive" className="max-w-md mx-auto text-left">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>Book not found or could not be loaded.</AlertDescription>
-          </Alert>
-          <Button asChild variant="outline" className="mt-8">
-            <Link href="/">Return to Library</Link>
-          </Button>
-        </div>
-      </Layout>
+      <div className="h-screen flex flex-col items-center justify-center gap-4 bg-[#faf9f6]">
+        <BookOpen className="h-10 w-10 text-muted-foreground/40" />
+        <p className="text-muted-foreground">Book not found.</p>
+        <Link href="/">
+          <Button variant="outline" size="sm">Back to Library</Button>
+        </Link>
+      </div>
     );
   }
 
   return (
-    <Layout>
-      {isInProgress && (
-        <div className="bg-secondary/50 border-b border-border/40 sticky top-16 z-30 backdrop-blur-sm">
-          <div className="container mx-auto max-w-5xl px-4 py-3 flex items-center gap-4">
-            <div className="flex-1">
-              <div className="flex justify-between text-xs font-medium text-muted-foreground mb-1.5">
-                <span>Translating...</span>
-                <span>{Math.round(statusData?.progressPercent || 0)}%</span>
-              </div>
-              <Progress value={statusData?.progressPercent || 0} className="h-1.5" />
+    <div className="h-screen flex flex-col bg-[#faf9f6] overflow-hidden">
+      {/* ── Top bar ── */}
+      <header className="shrink-0 bg-[#faf9f6]/95 backdrop-blur border-b border-border/40 z-20">
+        <div className="max-w-2xl mx-auto px-4 h-12 flex items-center gap-3">
+          <Link href="/">
+            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          </Link>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate leading-none">{book.title}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {progress}% &mdash; page {page} of {totalPages}
+            </p>
+          </div>
+          {isTranslating && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-600">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>{Math.round(statusData?.progressPercent || 0)}% translated</span>
             </div>
-            <div className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">
-              {statusData?.translatedParagraphs || 0} / {statusData?.totalParagraphs || 0} paragraphs
+          )}
+        </div>
+      </header>
+
+      {/* ── Translation panel (sticky, slides in below header) ── */}
+      {selectedParagraph && (
+        <div className="shrink-0 bg-primary/5 border-b-2 border-primary/20 z-10">
+          <div className="max-w-2xl mx-auto px-4 py-3">
+            <div className="flex items-start gap-2">
+              <div className="flex-1 min-w-0">
+                {showDict && selectedWord ? (
+                  <DictionaryPanel
+                    word={selectedWord}
+                    context={selectedParagraph.originalText}
+                    onClose={() => { setShowDict(false); setSelectedWord(null); }}
+                  />
+                ) : selectedParagraph.isTranslated && selectedParagraph.translatedText ? (
+                  <p className="text-sm leading-relaxed text-foreground/90 font-serif">
+                    {selectedParagraph.translatedText}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Translation in progress...
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={closePanel}
+                className="h-6 w-6 shrink-0 rounded-full flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="container mx-auto max-w-5xl px-4 py-12">
-        <header className="mb-12 text-center max-w-3xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-serif font-bold text-primary mb-4 leading-tight">
-            {book.title}
-          </h1>
-          {book.author && (
-            <p className="text-xl text-muted-foreground font-serif italic">
-              by {book.author}
-            </p>
+      {/* ── Main reading area ── */}
+      <main ref={mainRef} className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-6 py-8">
+          {isLoadingParagraphs ? (
+            <div className="flex justify-center py-32">
+              <Loader2 className="h-6 w-6 animate-spin text-primary/40" />
+            </div>
+          ) : paragraphsData?.paragraphs?.length ? (
+            <div className="space-y-1">
+              {paragraphsData.paragraphs.map((p) => (
+                <BookParagraph
+                  key={p.id}
+                  paragraph={p}
+                  isSelected={selectedParagraph?.id === p.id}
+                  selectedWord={selectedParagraph?.id === p.id ? selectedWord : null}
+                  onClick={handleParagraphClick}
+                  onWordDoubleClick={handleWordDoubleClick}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground font-serif italic py-32">No text found.</p>
           )}
-          
-          <div className="mt-8 flex items-center justify-center gap-4">
-            <Button asChild variant="outline" size="sm" className="rounded-full font-medium shadow-sm hover:bg-primary/5 border-primary/20">
-              <Link href={`/reader/${book.id}/stats`} className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Reading Stats
-              </Link>
-            </Button>
-          </div>
-        </header>
-
-        <div className="bg-card border border-border/40 rounded-2xl shadow-sm overflow-hidden mb-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border/40 bg-muted/30">
-            <div className="p-4 text-center font-semibold text-sm tracking-widest uppercase text-muted-foreground">
-              English Original
-            </div>
-            <div className="p-4 text-center font-semibold text-sm tracking-widest uppercase text-muted-foreground border-t md:border-t-0 md:border-l border-border/40">
-              Russian Translation
-            </div>
-          </div>
-          
-          <div className="px-6 md:px-10">
-            {isLoadingParagraphs ? (
-              <div className="py-24 flex justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
-              </div>
-            ) : paragraphsData?.paragraphs && paragraphsData.paragraphs.length > 0 ? (
-              <div className="divide-y divide-border/20">
-                {paragraphsData.paragraphs.map(paragraph => (
-                  <ParagraphView key={paragraph.id} paragraph={paragraph} />
-                ))}
-              </div>
-            ) : (
-              <div className="py-24 text-center text-muted-foreground font-serif italic">
-                No paragraphs found.
-              </div>
-            )}
-          </div>
         </div>
 
-        {paragraphsData && paragraphsData.totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border/40 pt-6">
-            <Button 
-              variant="outline" 
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+        {/* ── Pagination ── */}
+        {totalPages > 1 && (
+          <div className="max-w-2xl mx-auto px-6 pb-10 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => goToPage(Math.max(1, page - 1))}
               disabled={page === 1}
-              className="flex items-center gap-2 font-medium"
+              className="gap-1.5"
             >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
+              <ChevronLeft className="h-4 w-4" /> Previous
             </Button>
-            <span className="text-sm font-medium text-muted-foreground font-mono">
-              Page {page} of {paragraphsData.totalPages}
-            </span>
-            <Button 
-              variant="outline" 
-              onClick={() => setPage(p => Math.min(paragraphsData.totalPages, p + 1))}
-              disabled={page === paragraphsData.totalPages}
-              className="flex items-center gap-2 font-medium"
+            <span className="text-xs text-muted-foreground">{page} / {totalPages}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => goToPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="gap-1.5"
             >
-              Next
-              <ChevronRight className="h-4 w-4" />
+              Next <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         )}
-      </div>
-    </Layout>
+      </main>
+    </div>
   );
 }
