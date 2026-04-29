@@ -5,11 +5,12 @@ interface DictionaryPanelProps {
   word: string;
   context?: string;
   onClose: () => void;
-  /** When true, renders inline without its own close button (parent panel handles it) */
   inline?: boolean;
+  textColor?: string;
+  mutedColor?: string;
 }
 
-export function DictionaryPanel({ word, context, onClose, inline }: DictionaryPanelProps) {
+export function DictionaryPanel({ word, context, onClose, inline, textColor = "#1a1a1a", mutedColor = "#6b7280" }: DictionaryPanelProps) {
   const clean = word.toLowerCase().replace(/[^\w-]/g, "");
 
   const { data: entry, isLoading, isError } = useLookupWord(
@@ -19,21 +20,20 @@ export function DictionaryPanel({ word, context, onClose, inline }: DictionaryPa
 
   const content = () => {
     if (isLoading) return (
-      <span className="flex items-center gap-1.5 text-muted-foreground">
-        <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+      <span style={{ display: "flex", alignItems: "center", gap: 6, color: mutedColor }}>
+        <Loader2 size={12} style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
         <em>{word}</em>...
       </span>
     );
-    if (isError) return <span className="text-destructive">Не удалось найти «{word}».</span>;
-    if (!entry) return <span className="text-muted-foreground">Нет перевода для «{word}».</span>;
+    if (isError) return <span style={{ color: "#ef4444" }}>Не удалось найти «{word}».</span>;
+    if (!entry) return <span style={{ color: mutedColor }}>Нет перевода для «{word}».</span>;
     return (
       <span>
-        <span className="font-semibold">{word}</span>
-        {entry.partOfSpeech && <span className="text-muted-foreground italic ml-1.5 text-xs">{entry.partOfSpeech}</span>}
-        {" — "}
-        <span>{entry.translations.join(", ")}</span>
-        {entry.examples && entry.examples[0] && (
-          <span className="text-muted-foreground"> · <em>{entry.examples[0]}</em></span>
+        <span style={{ fontWeight: 600, color: textColor }}>{word}</span>
+        {entry.partOfSpeech && <span style={{ color: mutedColor, fontStyle: "italic", fontSize: 12, marginLeft: 6 }}>{entry.partOfSpeech}</span>}
+        <span style={{ color: textColor }}> — {entry.translations.join(", ")}</span>
+        {entry.examples?.[0] && (
+          <span style={{ color: mutedColor }}> · <em>{entry.examples[0]}</em></span>
         )}
       </span>
     );
@@ -41,22 +41,22 @@ export function DictionaryPanel({ word, context, onClose, inline }: DictionaryPa
 
   if (inline) {
     return (
-      <div className="flex items-start gap-1.5">
-        <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 mt-[0.35em]" />
-        <p className="text-sm text-foreground/90 leading-[1.55em] flex-1">{content()}</p>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#10b981", flexShrink: 0, marginTop: "0.35em" }} />
+        <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", flex: 1 }}>{content()}</p>
       </div>
     );
   }
 
   return (
-    <div className="flex items-start gap-2">
-      <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 mt-[0.35em]" />
-      <p className="text-sm text-foreground/90 leading-[1.55em] flex-1">{content()}</p>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+      <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#10b981", flexShrink: 0, marginTop: "0.35em" }} />
+      <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", flex: 1 }}>{content()}</p>
       <button
         onClick={onClose}
-        className="h-5 w-5 shrink-0 rounded-full flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+        style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: mutedColor, flexShrink: 0 }}
       >
-        <X className="h-3 w-3" />
+        <X size={12} />
       </button>
     </div>
   );
