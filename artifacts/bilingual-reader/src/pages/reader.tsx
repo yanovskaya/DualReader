@@ -324,26 +324,22 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   );
 }
 
-// Returns the scroll-relative top of `el` inside scroll `container`,
-// working correctly regardless of CSS positioning on the container.
-function getRelTop(el: HTMLElement, container: HTMLElement): number {
-  const cRect = container.getBoundingClientRect();
-  const eRect = el.getBoundingClientRect();
-  return eRect.top - cRect.top + container.scrollTop;
-}
-
-// Syncs the RU panel so the topmost visible EN paragraph appears at the top of RU.
-// Paragraph-aligned, no intra-paragraph fraction, so it never drifts.
+// Syncs the RU panel to match the EN scroll position.
+// Uses offsetTop (stable, layout-based) — requires both containers to have position:relative.
+// Applies an intra-paragraph fraction so the exact sentence stays aligned.
 function syncRuToEn(en: HTMLElement, ru: HTMLElement) {
-  const enCRect = en.getBoundingClientRect();
   const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
   for (const el of enParas) {
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom > enCRect.top) {
+    // First paragraph whose bottom is below the current EN scroll top
+    if (el.offsetTop + el.offsetHeight > en.scrollTop) {
       const paraId = el.id.replace("para-", "");
       const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
       if (ruPara) {
-        ru.scrollTop = getRelTop(ruPara, ru);
+        // Fraction (0–1) of how far into the EN paragraph we are
+        const intra = Math.max(0, Math.min(1,
+          (en.scrollTop - el.offsetTop) / Math.max(1, el.offsetHeight)
+        ));
+        ru.scrollTop = ruPara.offsetTop + intra * ruPara.offsetHeight;
         return;
       }
       break;
@@ -355,17 +351,18 @@ function syncRuToEn(en: HTMLElement, ru: HTMLElement) {
   ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
 }
 
-// Syncs the EN panel to match the topmost visible RU paragraph.
+// Syncs EN to match the topmost RU paragraph.
 function syncEnToRu(ru: HTMLElement, en: HTMLElement) {
-  const ruCRect = ru.getBoundingClientRect();
   const ruParas = ru.querySelectorAll<HTMLElement>("[data-ru-para]");
   for (const el of ruParas) {
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom > ruCRect.top) {
+    if (el.offsetTop + el.offsetHeight > ru.scrollTop) {
       const paraId = el.getAttribute("data-ru-para");
       const enPara = paraId ? en.querySelector<HTMLElement>(`#para-${paraId}`) : null;
       if (enPara) {
-        en.scrollTop = getRelTop(enPara, en);
+        const intra = Math.max(0, Math.min(1,
+          (ru.scrollTop - el.offsetTop) / Math.max(1, el.offsetHeight)
+        ));
+        en.scrollTop = enPara.offsetTop + intra * enPara.offsetHeight;
         return;
       }
       break;
@@ -754,6 +751,7 @@ export default function ReaderPage() {
             overflowX: "hidden",
             WebkitOverflowScrolling: "touch" as never,
             outline: "none",
+            position: "relative",
           }}
           onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
         >
@@ -828,6 +826,7 @@ export default function ReaderPage() {
                 overflowY: "auto",
                 overflowX: "hidden",
                 WebkitOverflowScrolling: "touch" as never,
+                position: "relative",
               }}
             >
               {displayParagraphs.map(p => (
