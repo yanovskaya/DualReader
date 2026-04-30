@@ -487,7 +487,7 @@ export default function ReaderPage() {
                   paragraph={p}
                   mode="ru"
                   colors={colors}
-                  fontSize={Math.max(10, Math.round(settings.fontSize / 2))}
+                  fontSize={Math.max(10, Math.round(settings.fontSize * 0.75))}
                   fontFamily={bodyFont}
                   headingFontFamily={headingFont}
                   lineHeight={lineHeight}
