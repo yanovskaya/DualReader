@@ -16,8 +16,9 @@ interface BookParagraphProps {
   onWordClick: (word: string, sentenceIdx: number, charStart: number, p: Paragraph) => void;
   onWordDoubleClick: (word: string, p: Paragraph) => void;
   colors: ThemeColors;
-  bodyFontSize: string;
-  headingFontSize: string;
+  fontSize: number;
+  fontFamily: string;
+  headingFontFamily: string;
   lineHeight: string;
 }
 
@@ -28,8 +29,9 @@ export function BookParagraph({
   onWordClick,
   onWordDoubleClick,
   colors,
-  bodyFontSize,
-  headingFontSize,
+  fontSize,
+  fontFamily,
+  headingFontFamily,
   lineHeight,
 }: BookParagraphProps) {
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,7 +40,7 @@ export function BookParagraph({
   const text = paragraph.originalText;
   const isHeading = isHeadingParagraph(text);
 
-  // Tokenize + track char positions
+  // Tokenize: words + punctuation + whitespace, tracking character positions
   const rawTokens = text.match(/[\w''-]+|[^\w\s]+|\s+/g) || [];
   let charPos = 0;
   const tokens = rawTokens.map(token => {
@@ -81,10 +83,10 @@ export function BookParagraph({
   // ── Chapter heading ──────────────────────────────────────────────────────
   if (isHeading) {
     return (
-      <div style={{ paddingTop: 36, paddingBottom: 12 }}>
+      <div style={{ paddingTop: 32, paddingBottom: 10 }}>
         <h2 style={{
-          fontSize: headingFontSize,
-          fontFamily: "Georgia, 'Times New Roman', serif",
+          fontSize: Math.round(fontSize * 1.28),
+          fontFamily: headingFontFamily,
           fontWeight: 700,
           color: colors.heading,
           margin: 0,
@@ -92,7 +94,7 @@ export function BookParagraph({
         }}>
           {text}
         </h2>
-        <div style={{ marginTop: 8, height: 1, background: colors.border }} />
+        <div style={{ marginTop: 10, height: 1, background: colors.border }} />
       </div>
     );
   }
@@ -101,18 +103,22 @@ export function BookParagraph({
   return (
     <div onClick={handleParagraphClick} style={{ padding: "3px 0", cursor: "pointer" }}>
       <p style={{
-        fontSize: bodyFontSize,
+        fontSize,
         lineHeight,
-        fontFamily: "Georgia, 'Times New Roman', serif",
+        fontFamily,
         color: colors.text,
         margin: 0,
-        letterSpacing: "0.01em",
+        textAlign: "justify",
+        hyphens: "auto",
+        wordBreak: "break-word",
+        letterSpacing: "0.005em",
       }}>
         {tokens.map(({ token, isWord, sentenceIdx, charStart }, i) => {
           if (!isWord) return <span key={i}>{token}</span>;
 
           const clean = token.replace(/^[^\w]+|[^\w]+$/g, "");
-          // Highlight ONLY the exact token that was clicked (by charStart position in this paragraph)
+
+          // Only highlight the EXACT clicked token (by paragraph id + char position)
           const isHighlighted =
             selectedToken !== null &&
             selectedToken.paragraphId === paragraph.id &&
