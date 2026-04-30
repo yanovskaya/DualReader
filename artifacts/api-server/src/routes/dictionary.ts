@@ -52,6 +52,7 @@ router.get("/dictionary/lookup", async (req, res) => {
     const response = await openai.chat.completions.create({
       model: "gpt-4.1-nano",
       max_completion_tokens: 500,
+      timeout: 20_000, // 20 s — fail fast rather than hanging
       messages: [
         {
           role: "system",

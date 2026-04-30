@@ -48,9 +48,16 @@ function timeLeft(remaining: number) {
 // ── Dictionary entry ───────────────────────────────────────────────────────────
 function WordDict({ word, context, colors }: { word: string; context: string; colors: ThemeColors }) {
   const clean = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
-  const { data: entry, isLoading, isError } = useLookupWord(
+  const { data: entry, isLoading, isError, refetch } = useLookupWord(
     { word: clean, context },
-    { query: { enabled: !!clean, queryKey: getLookupWordQueryKey({ word: clean, context }) } }
+    {
+      query: {
+        enabled: !!clean,
+        queryKey: getLookupWordQueryKey({ word: clean, context }),
+        retry: 0,
+        staleTime: 1000 * 60 * 60 * 24 * 7, // 7 days — cache indefinitely once loaded
+      },
+    }
   );
 
   if (isLoading) return (
@@ -58,7 +65,21 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
       <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Ищем «{word}»…
     </div>
   );
-  if (isError || !entry) return <div style={{ fontSize: 14, color: colors.muted }}>Нет перевода для «{word}».</div>;
+  if (isError || !entry) return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 14, color: colors.muted }}>Не удалось найти «{word}». Попробуйте ещё раз.</div>
+      <button
+        onClick={() => refetch()}
+        style={{
+          alignSelf: "flex-start", padding: "6px 16px", borderRadius: 20,
+          border: `1.5px solid ${colors.accent}`, background: "transparent",
+          color: colors.accent, fontSize: 13, cursor: "pointer",
+        }}
+      >
+        Повторить
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
