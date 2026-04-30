@@ -27,6 +27,8 @@ import type {
   LookupWordParams,
   Paragraph,
   ParagraphsPage,
+  SearchBookParams,
+  SearchResults,
   StartTranslationBody,
   TranslationStatus,
 } from "./api.schemas";
@@ -616,6 +618,111 @@ export function useGetBookChapters<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetBookChaptersQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Search paragraphs of a book by text
+ */
+export const getSearchBookUrl = (id: number, params: SearchBookParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/books/${id}/search?${stringifiedParams}`
+    : `/api/books/${id}/search`;
+};
+
+export const searchBook = async (
+  id: number,
+  params: SearchBookParams,
+  options?: RequestInit,
+): Promise<SearchResults> => {
+  return customFetch<SearchResults>(getSearchBookUrl(id, params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSearchBookQueryKey = (
+  id: number,
+  params?: SearchBookParams,
+) => {
+  return [`/api/books/${id}/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchBookQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchBook>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  params: SearchBookParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchBook>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getSearchBookQueryKey(id, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchBook>>> = ({
+    signal,
+  }) => searchBook(id, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchBook>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchBookQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchBook>>
+>;
+export type SearchBookQueryError = ErrorType<void>;
+
+/**
+ * @summary Search paragraphs of a book by text
+ */
+
+export function useSearchBook<
+  TData = Awaited<ReturnType<typeof searchBook>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  params: SearchBookParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchBook>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchBookQueryOptions(id, params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

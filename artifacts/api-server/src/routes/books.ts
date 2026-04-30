@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { booksTable, paragraphsTable } from "@workspace/db";
 import { CreateBookBody, GetBookParams, DeleteBookParams, GetBookStatsParams } from "@workspace/api-zod";
-import { eq, count, and, sql } from "drizzle-orm";
+import { eq, count, and, or, ilike, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -210,6 +210,58 @@ router.get("/books/:id/chapters", async (req, res) => {
     return res.json({ chapters });
   } catch (err) {
     req.log.error({ err }, "Failed to get chapters");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /books/:id/search?q=...&limit=40
+router.get("/books/:id/search", async (req, res) => {
+  const parsed = GetBookParams.safeParse(req.params);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
+
+  const query = String(req.query.q ?? "").trim();
+  if (!query) return res.status(400).json({ error: "Missing query parameter q" });
+
+  const limit = Math.min(80, Math.max(1, parseInt(String(req.query.limit ?? "40"))));
+
+  try {
+    const book = await db.select({ id: booksTable.id }).from(booksTable).where(eq(booksTable.id, parsed.data.id)).limit(1);
+    if (!book.length) return res.status(404).json({ error: "Book not found" });
+
+    const pattern = `%${query}%`;
+    const results = await db
+      .select({
+        id: paragraphsTable.id,
+        position: paragraphsTable.position,
+        originalText: paragraphsTable.originalText,
+        translatedText: paragraphsTable.translatedText,
+      })
+      .from(paragraphsTable)
+      .where(
+        and(
+          eq(paragraphsTable.bookId, parsed.data.id),
+          or(
+            ilike(paragraphsTable.originalText, pattern),
+            ilike(paragraphsTable.translatedText, pattern),
+          ),
+        ),
+      )
+      .orderBy(paragraphsTable.position)
+      .limit(limit);
+
+    return res.json({
+      results: results.map(r => ({
+        id: r.id,
+        position: r.position,
+        originalText: r.originalText,
+        translatedText: r.translatedText ?? null,
+        isHeading: isHeading(r.originalText),
+      })),
+      total: results.length,
+      query,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to search book");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -153,6 +153,41 @@ paths:
         "404":
           description: Book not found
 
+  /books/{id}/search:
+    get:
+      operationId: searchBook
+      tags: [books]
+      summary: Search paragraphs of a book by text
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query (case-insensitive)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 40
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+        "400":
+          description: Missing query
+        "404":
+          description: Book not found
+
   /books/{id}/translation-status:
     get:
       operationId: getTranslationStatus
@@ -452,6 +487,42 @@ components:
         - id
         - position
         - originalText
+
+    SearchResult:
+      type: object
+      properties:
+        id:
+          type: integer
+        position:
+          type: integer
+        originalText:
+          type: string
+        translatedText:
+          type: string
+          nullable: true
+        isHeading:
+          type: boolean
+      required:
+        - id
+        - position
+        - originalText
+        - isHeading
+
+    SearchResults:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+        total:
+          type: integer
+        query:
+          type: string
+      required:
+        - results
+        - total
+        - query
 
     BookStats:
       type: object

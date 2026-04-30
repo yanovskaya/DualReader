@@ -118,6 +118,34 @@ export const GetBookChaptersResponse = zod.object({
 });
 
 /**
+ * @summary Search paragraphs of a book by text
+ */
+export const SearchBookParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const searchBookQueryLimitDefault = 40;
+
+export const SearchBookQueryParams = zod.object({
+  q: zod.coerce.string().describe("Search query (case-insensitive)"),
+  limit: zod.coerce.number().default(searchBookQueryLimitDefault),
+});
+
+export const SearchBookResponse = zod.object({
+  results: zod.array(
+    zod.object({
+      id: zod.number(),
+      position: zod.number(),
+      originalText: zod.string(),
+      translatedText: zod.string().nullish(),
+      isHeading: zod.boolean(),
+    }),
+  ),
+  total: zod.number(),
+  query: zod.string(),
+});
+
+/**
  * @summary Get translation progress for a book
  */
 export const GetTranslationStatusParams = zod.object({

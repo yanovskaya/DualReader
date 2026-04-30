@@ -96,6 +96,20 @@ export interface Chapter {
   translatedText?: string | null;
 }
 
+export interface SearchResult {
+  id: number;
+  position: number;
+  originalText: string;
+  translatedText?: string | null;
+  isHeading: boolean;
+}
+
+export interface SearchResults {
+  results: SearchResult[];
+  total: number;
+  query: string;
+}
+
 export interface BookStats {
   bookId: number;
   totalParagraphs: number;
@@ -112,6 +126,14 @@ export type ListParagraphsParams = {
 
 export type GetBookChapters200 = {
   chapters: Chapter[];
+};
+
+export type SearchBookParams = {
+  /**
+   * Search query (case-insensitive)
+   */
+  q: string;
+  limit?: number;
 };
 
 export type LookupWordParams = {

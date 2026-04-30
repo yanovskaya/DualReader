@@ -13,10 +13,11 @@ import {
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List, EyeOff } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
+import { SearchPanel } from "@/components/search-panel";
 import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
 import {
   useReaderSettings,
@@ -294,6 +295,7 @@ export default function ReaderPage() {
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
   // Global toggle: show or hide Russian translations
   const [showTranslations, setShowTranslations] = useState(true);
@@ -678,10 +680,13 @@ export default function ReaderPage() {
               )}
             </div>
           </div>
-          <button onClick={() => { setShowToc(s => !s); setShowSettings(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+          <button onClick={() => { setShowToc(s => !s); setShowSettings(false); setShowSearch(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <List size={17} />
           </button>
-          <button onClick={() => { setShowSettings(s => !s); setShowToc(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+          <button onClick={() => { setShowSearch(s => !s); setShowToc(false); setShowSettings(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+            <Search size={17} />
+          </button>
+          <button onClick={() => { setShowSettings(s => !s); setShowToc(false); setShowSearch(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Settings2 size={17} />
           </button>
           {/* Hide header button */}
@@ -828,6 +833,17 @@ export default function ReaderPage() {
           onClose={() => setShowToc(false)}
           readingPct={globalReadPct}
           totalParagraphs={book?.totalParagraphs ?? 0}
+        />
+      )}
+
+      {/* ── Search panel ─────────────────────────────────────────────── */}
+      {showSearch && bookId && (
+        <SearchPanel
+          bookId={bookId}
+          colors={colors}
+          fontSize={settings.fontSize}
+          onNavigate={(id, pos) => navigateToChapter(id, pos)}
+          onClose={() => setShowSearch(false)}
         />
       )}
 
