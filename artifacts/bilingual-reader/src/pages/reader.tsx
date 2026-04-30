@@ -324,54 +324,46 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   );
 }
 
-// Syncs the RU panel to match the EN scroll position.
-// Uses offsetTop (stable, layout-based) — requires both containers to have position:relative.
-// Applies an intra-paragraph fraction so the exact sentence stays aligned.
+// Scroll the RU panel so the paragraph that overlaps the EN viewport top appears
+// at the top of RU.  Uses only getBoundingClientRect — no offsetTop, no
+// position:relative requirement, works on all mobile browsers.
 function syncRuToEn(en: HTMLElement, ru: HTMLElement) {
-  const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
-  for (const el of enParas) {
-    // First paragraph whose bottom is below the current EN scroll top
-    if (el.offsetTop + el.offsetHeight > en.scrollTop) {
+  const enTop = en.getBoundingClientRect().top;
+  const ruTop = ru.getBoundingClientRect().top;
+  for (const el of en.querySelectorAll<HTMLElement>("[id^='para-']")) {
+    if (el.getBoundingClientRect().bottom > enTop) {
       const paraId = el.id.replace("para-", "");
       const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
       if (ruPara) {
-        // Fraction (0–1) of how far into the EN paragraph we are
-        const intra = Math.max(0, Math.min(1,
-          (en.scrollTop - el.offsetTop) / Math.max(1, el.offsetHeight)
-        ));
-        ru.scrollTop = ruPara.offsetTop + intra * ruPara.offsetHeight;
+        // Shift RU scroll so ruPara.top lands exactly at the RU container top
+        ru.scrollTop += ruPara.getBoundingClientRect().top - ruTop;
         return;
       }
       break;
     }
   }
   // Fallback: proportional ratio
-  const scrollable = en.scrollHeight - en.clientHeight;
-  const ratio = scrollable > 0 ? en.scrollTop / scrollable : 0;
-  ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+  const s = en.scrollHeight - en.clientHeight;
+  ru.scrollTop = (s > 0 ? en.scrollTop / s : 0) * (ru.scrollHeight - ru.clientHeight);
 }
 
-// Syncs EN to match the topmost RU paragraph.
+// Scroll EN so the paragraph visible at the top of RU appears at the top of EN.
 function syncEnToRu(ru: HTMLElement, en: HTMLElement) {
-  const ruParas = ru.querySelectorAll<HTMLElement>("[data-ru-para]");
-  for (const el of ruParas) {
-    if (el.offsetTop + el.offsetHeight > ru.scrollTop) {
+  const ruTop = ru.getBoundingClientRect().top;
+  const enTop = en.getBoundingClientRect().top;
+  for (const el of ru.querySelectorAll<HTMLElement>("[data-ru-para]")) {
+    if (el.getBoundingClientRect().bottom > ruTop) {
       const paraId = el.getAttribute("data-ru-para");
       const enPara = paraId ? en.querySelector<HTMLElement>(`#para-${paraId}`) : null;
       if (enPara) {
-        const intra = Math.max(0, Math.min(1,
-          (ru.scrollTop - el.offsetTop) / Math.max(1, el.offsetHeight)
-        ));
-        en.scrollTop = enPara.offsetTop + intra * enPara.offsetHeight;
+        en.scrollTop += enPara.getBoundingClientRect().top - enTop;
         return;
       }
       break;
     }
   }
-  // Fallback: proportional ratio
-  const ruScrollable = ru.scrollHeight - ru.clientHeight;
-  const r = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
-  en.scrollTop = r * (en.scrollHeight - en.clientHeight);
+  const s = ru.scrollHeight - ru.clientHeight;
+  en.scrollTop = (s > 0 ? ru.scrollTop / s : 0) * (en.scrollHeight - en.clientHeight);
 }
 
 // ── Main Reader ────────────────────────────────────────────────────────────────
@@ -580,7 +572,7 @@ export default function ReaderPage() {
     syncSource.current = "en";
     clearSyncTimer();
     syncRuToEn(en, ru);
-    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
+    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
   }, [clearSyncTimer, saveProgressDebounced]);
 
   const handleRuScroll = useCallback(() => {
@@ -594,7 +586,7 @@ export default function ReaderPage() {
     // Update progress bar from EN position
     const enScrollable = en.scrollHeight - en.clientHeight;
     setScrollPct(enScrollable > 0 ? Math.min(1, en.scrollTop / enScrollable) : 0);
-    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
+    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
   }, [clearSyncTimer]);
 
   // Sync theme to body background
@@ -751,7 +743,6 @@ export default function ReaderPage() {
             overflowX: "hidden",
             WebkitOverflowScrolling: "touch" as never,
             outline: "none",
-            position: "relative",
           }}
           onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
         >
@@ -826,7 +817,6 @@ export default function ReaderPage() {
                 overflowY: "auto",
                 overflowX: "hidden",
                 WebkitOverflowScrolling: "touch" as never,
-                position: "relative",
               }}
             >
               {displayParagraphs.map(p => (
