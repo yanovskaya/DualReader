@@ -1,28 +1,50 @@
+import { useEffect } from "react";
 import { useListBooks, getListBooksQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { BookCard } from "@/components/book-card";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { Library, Plus, BookOpen } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Plus, BookOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getLastBook } from "@/hooks/use-reading-progress";
 
 export default function Home() {
   const { data: books, isLoading } = useListBooks({
     query: { queryKey: getListBooksQueryKey() }
   });
+  const [, navigate] = useLocation();
+
+  // Auto-navigate: last opened book, or the only book if there's just one
+  useEffect(() => {
+    if (isLoading || !books) return;
+    if (books.length === 0) return;
+
+    const lastId = getLastBook();
+
+    // If there's a saved last book and it still exists → go there
+    if (lastId && books.some(b => b.id === lastId)) {
+      navigate(`/reader/${lastId}`);
+      return;
+    }
+
+    // If there's only one book → open it directly
+    if (books.length === 1) {
+      navigate(`/reader/${books[0].id}`);
+    }
+  }, [isLoading, books, navigate]);
 
   return (
     <Layout>
       <div className="container mx-auto max-w-5xl px-4 py-12">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-10 border-b border-border/40 pb-6">
           <div>
-            <h1 className="text-4xl font-serif font-bold text-primary mb-2">Your Library</h1>
-            <p className="text-muted-foreground text-lg">Continue reading where you left off.</p>
+            <h1 className="text-4xl font-serif font-bold text-primary mb-2">Библиотека</h1>
+            <p className="text-muted-foreground text-lg">Продолжить чтение с последнего места.</p>
           </div>
           <Button asChild size="lg" className="shadow-sm font-medium">
             <Link href="/upload" className="flex items-center gap-2">
               <Plus className="h-5 w-5" />
-              Add New Book
+              Добавить книгу
             </Link>
           </Button>
         </div>
@@ -51,14 +73,14 @@ export default function Home() {
             <div className="h-20 w-20 bg-primary/5 rounded-full flex items-center justify-center mb-6">
               <BookOpen className="h-10 w-10 text-primary/40" />
             </div>
-            <h2 className="text-2xl font-serif font-semibold mb-2">Your library is empty</h2>
+            <h2 className="text-2xl font-serif font-semibold mb-2">Библиотека пуста</h2>
             <p className="text-muted-foreground max-w-md mx-auto mb-8">
-              Upload a book, short story, or article in English to start reading with parallel Russian translation.
+              Загрузите книгу, рассказ или статью на английском, чтобы читать с параллельным переводом на русский.
             </p>
             <Button asChild size="lg" variant="outline" className="border-primary/20 hover:bg-primary/5">
               <Link href="/upload" className="flex items-center gap-2">
                 <Plus className="h-5 w-5" />
-                Upload Your First Book
+                Загрузить первую книгу
               </Link>
             </Button>
           </div>

@@ -16,6 +16,7 @@ import type { Paragraph } from "@workspace/api-client-react/src/generated/api.sc
 import { Loader2, ArrowLeft, X, Settings2, List } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { TocDrawer } from "@/components/toc-drawer";
+import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
 import {
   useReaderSettings,
   THEMES,
@@ -205,11 +206,16 @@ export default function ReaderPage() {
   const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin } = useReaderSettings();
   const colors = THEMES[settings.theme];
 
-  // Incremental batch loading — always starts at 1, accumulates
-  const [currentBatch, setCurrentBatch] = useState(1);
+  // Load saved reading progress for this book (before first render)
+  const savedProgress = bookId ? loadProgress(bookId) : null;
+
+  // Incremental batch loading — start from saved batch if available
+  const [currentBatch, setCurrentBatch] = useState(savedProgress?.lastBatch ?? 1);
   const [totalBatches, setTotalBatches] = useState(1);
   const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
   const loadingNextBatch = useRef(false);
+  // Scroll ratio to restore after paragraphs load (null = nothing pending)
+  const pendingRestoreRatio = useRef<number | null>(savedProgress?.scrollRatio ?? null);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
@@ -291,6 +297,33 @@ export default function ReaderPage() {
     setCurrentBatch(prev => Math.max(prev, neededBatch));
   }, []);
 
+  // Remember this book as last opened
+  useEffect(() => {
+    if (bookId) saveLastBook(bookId);
+  }, [bookId]);
+
+  // Restore scroll position once enough paragraphs are loaded
+  useEffect(() => {
+    if (pendingRestoreRatio.current === null) return;
+    if (allParagraphs.length === 0) return;
+    // Wait a tick for DOM to paint
+    const timer = setTimeout(() => {
+      const en = enRef.current;
+      if (!en) return;
+      const scrollable = en.scrollHeight - en.clientHeight;
+      if (scrollable <= 0) return;
+      en.scrollTop = pendingRestoreRatio.current! * scrollable;
+      // Also sync RU panel
+      const ru = ruRef.current;
+      if (ru) {
+        const ruScrollable = ru.scrollHeight - ru.clientHeight;
+        ru.scrollTop = pendingRestoreRatio.current! * ruScrollable;
+      }
+      pendingRestoreRatio.current = null;
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [allParagraphs]);
+
   // When RU panel becomes visible again, sync its position to current EN position
   useEffect(() => {
     if (!showTranslations) return;
@@ -320,6 +353,15 @@ export default function ReaderPage() {
     setPendingScrollId(null);
   }, [allParagraphs, pendingScrollId]);
 
+  // Debounced save of reading progress
+  const saveProgressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveProgressDebounced = useCallback((ratio: number) => {
+    if (saveProgressTimer.current) clearTimeout(saveProgressTimer.current);
+    saveProgressTimer.current = setTimeout(() => {
+      saveProgress(bookId, { scrollRatio: ratio, lastBatch: currentBatch });
+    }, 800);
+  }, [bookId, currentBatch]);
+
   // Sync scroll between EN and RU panels without ping-pong
   const clearSyncTimer = useCallback(() => {
     if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
@@ -330,17 +372,18 @@ export default function ReaderPage() {
     if (!en) return;
     // Update progress bar regardless
     const scrollable = en.scrollHeight - en.clientHeight;
-    setScrollPct(scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0);
+    const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
+    setScrollPct(ratio);
+    saveProgressDebounced(ratio);
     // Only propagate if EN is the active source (or no source yet)
     if (syncSource.current === "ru") return;
     const ru = ruRef.current;
     if (!ru) return;
     syncSource.current = "en";
     clearSyncTimer();
-    const ratio = scrollable > 0 ? en.scrollTop / scrollable : 0;
     ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
-  }, [clearSyncTimer]);
+  }, [clearSyncTimer, saveProgressDebounced]);
 
   const handleRuScroll = useCallback(() => {
     // Only propagate if RU is the active source (or no source yet)

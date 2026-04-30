@@ -14,9 +14,10 @@ interface DictionaryPopoverProps {
 }
 
 export function DictionaryPopover({ word, context, isOpen, onOpenChange, children }: DictionaryPopoverProps) {
+  const cleanWord = word.toLowerCase().replace(/[^\w\s-]/g, "");
   const { data: entry, isLoading, isError } = useLookupWord(
-    { params: { word: word.toLowerCase().replace(/[^\w\s-]/g, ""), context } },
-    { query: { enabled: isOpen && !!word, queryKey: getLookupWordQueryKey({ word: word.toLowerCase().replace(/[^\w\s-]/g, ""), context }) } }
+    { word: cleanWord, context },
+    { query: { enabled: isOpen && !!word, queryKey: getLookupWordQueryKey({ word: cleanWord, context }) } }
   );
 
   return (
