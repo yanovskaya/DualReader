@@ -46,7 +46,7 @@ export function BookParagraph({
             fontFamily: headingFontFamily,
             fontWeight: 700,
             lineHeight: 1.25,
-            color: colors.accent,
+            color: colors.heading,
             wordBreak: "break-word",
           }}>
             {ruContent ?? text}

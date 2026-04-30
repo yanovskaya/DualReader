@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import {
   useGetBook,
@@ -15,6 +15,7 @@ import {
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Loader2, ArrowLeft, X, Settings2, List, EyeOff } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
+import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
 import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
 import {
@@ -341,6 +342,18 @@ export default function ReaderPage() {
     });
     loadingNextBatch.current = false;
   }, [isSuccess, paragraphsData]);
+
+  // Deduplicate consecutive heading paragraphs with identical text (DB artifact)
+  const displayParagraphs = useMemo(() => {
+    const seen = new Set<string>();
+    return allParagraphs.filter(p => {
+      if (!isHeadingParagraph(p.originalText)) return true;
+      const key = p.originalText.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [allParagraphs]);
 
   // Infinite scroll — load next batch when sentinel becomes visible
   useEffect(() => {
@@ -687,13 +700,13 @@ export default function ReaderPage() {
           }}
           onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
         >
-          {allParagraphs.length === 0 && (
+          {displayParagraphs.length === 0 && (
             <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
               <Loader2 size={22} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
             </div>
           )}
 
-          {allParagraphs.map(p => (
+          {displayParagraphs.map(p => (
             <div key={p.id} id={`para-${p.id}`}>
               <BookParagraph
                 paragraph={p}
@@ -717,7 +730,7 @@ export default function ReaderPage() {
             </div>
           )}
 
-          {currentBatch >= totalBatches && allParagraphs.length > 0 && (
+          {currentBatch >= totalBatches && displayParagraphs.length > 0 && (
             <div style={{ textAlign: "center", padding: "32px 20px 60px", color: colors.muted, fontSize: 13 }}>
               ✦ Конец книги ✦
             </div>
@@ -759,7 +772,7 @@ export default function ReaderPage() {
                 WebkitOverflowScrolling: "touch" as never,
               }}
             >
-              {allParagraphs.map(p => (
+              {displayParagraphs.map(p => (
                 <div key={p.id} data-ru-para={p.id}>
                   <BookParagraph
                     paragraph={p}

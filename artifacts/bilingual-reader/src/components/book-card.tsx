@@ -3,7 +3,6 @@ import { Link } from "wouter";
 import { Book } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useDeleteBook, getListBooksQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 
@@ -15,19 +14,22 @@ export function BookCard({ book }: { book: Book }) {
     ? Math.round((book.translatedParagraphs / book.totalParagraphs) * 100)
     : 0;
 
-  const statusLabels = {
+  type Status = "pending" | "in_progress" | "completed";
+  const status = (book.translationStatus ?? "pending") as Status;
+
+  const statusLabels: Record<Status, string> = {
     pending: "Ожидает",
     in_progress: "Переводится",
     completed: "Готово",
   };
 
-  const statusColors = {
+  const statusColors: Record<Status, { bg: string; text: string }> = {
     pending:     { bg: "#e5e7eb", text: "#6b7280" },
     in_progress: { bg: "#d1fae5", text: "#065f46" },
     completed:   { bg: "#d1fae5", text: "#059669" },
   };
 
-  const sc = statusColors[book.translationStatus];
+  const sc = statusColors[status];
 
   const { mutate: deleteBook, isPending: isDeleting } = useDeleteBook({
     mutation: {
@@ -90,7 +92,7 @@ export function BookCard({ book }: { book: Book }) {
             flexShrink: 0, fontSize: 11, fontWeight: 600, borderRadius: 20,
             padding: "3px 9px", background: sc.bg, color: sc.text, whiteSpace: "nowrap",
           }}>
-            {statusLabels[book.translationStatus]}
+            {statusLabels[status]}
           </span>
         </div>
 
