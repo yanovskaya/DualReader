@@ -196,12 +196,16 @@ router.get("/books/:id/chapters", async (req, res) => {
       .where(eq(paragraphsTable.bookId, parsed.data.id))
       .orderBy(paragraphsTable.position);
 
-    const chapters = paragraphs.filter(p => isHeading(p.originalText)).map(p => ({
-      id: p.id,
-      position: p.position,
-      originalText: p.originalText,
-      translatedText: p.translatedText ?? null,
-    }));
+    // Filter headings, then deduplicate consecutive same-text chapters
+    const headings = paragraphs.filter(p => isHeading(p.originalText));
+    const chapters = headings
+      .filter((h, i) => i === 0 || h.originalText !== headings[i - 1].originalText)
+      .map(p => ({
+        id: p.id,
+        position: p.position,
+        originalText: p.originalText,
+        translatedText: p.translatedText ?? null,
+      }));
 
     return res.json({ chapters });
   } catch (err) {

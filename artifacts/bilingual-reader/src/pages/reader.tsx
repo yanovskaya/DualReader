@@ -365,6 +365,14 @@ export default function ReaderPage() {
     if (bookId) saveLastBook(bookId);
   }, [bookId]);
 
+  // Auto-start background translation if not yet complete
+  useEffect(() => {
+    if (!statusData) return;
+    if (statusData.status === "completed") return;
+    // Fire-and-forget: the SSE stream runs in the background, polling will pick up progress
+    fetch(`/api/books/${bookId}/translate`, { method: "POST" }).catch(() => {});
+  }, [statusData?.status, bookId]);
+
   // Restore scroll position once enough paragraphs are loaded
   useEffect(() => {
     if (pendingRestoreRatio.current === null) return;
@@ -770,6 +778,8 @@ export default function ReaderPage() {
           fontSize={settings.fontSize - 1}
           onNavigate={ch => navigateToChapter(ch.id, ch.position)}
           onClose={() => setShowToc(false)}
+          readingPct={scrollPct}
+          totalParagraphs={book?.totalParagraphs ?? 0}
         />
       )}
 
