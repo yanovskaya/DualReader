@@ -8,10 +8,11 @@ interface DictionaryPanelProps {
   inline?: boolean;
   textColor?: string;
   mutedColor?: string;
+  accentColor?: string;
 }
 
-export function DictionaryPanel({ word, context, onClose, inline, textColor = "#1a1a1a", mutedColor = "#6b7280" }: DictionaryPanelProps) {
-  const clean = word.toLowerCase().replace(/[^\w-]/g, "");
+export function DictionaryPanel({ word, context, onClose, inline, textColor = "#1a1a1a", mutedColor = "#6b7280", accentColor = "#059669" }: DictionaryPanelProps) {
+  const clean = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
 
   const { data: entry, isLoading, isError } = useLookupWord(
     { word: clean, context },
@@ -22,18 +23,32 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
     if (isLoading) return (
       <span style={{ display: "flex", alignItems: "center", gap: 6, color: mutedColor }}>
         <Loader2 size={12} style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
-        <em>{word}</em>...
+        <em>{word}</em>…
       </span>
     );
     if (isError) return <span style={{ color: "#ef4444" }}>Не удалось найти «{word}».</span>;
     if (!entry) return <span style={{ color: mutedColor }}>Нет перевода для «{word}».</span>;
+
     return (
-      <span>
-        <span style={{ fontWeight: 600, color: textColor }}>{word}</span>
-        {entry.partOfSpeech && <span style={{ color: mutedColor, fontStyle: "italic", fontSize: 12, marginLeft: 6 }}>{entry.partOfSpeech}</span>}
+      <span style={{ display: "inline" }}>
+        {/* Word (may be full phrasal verb) + part of speech */}
+        <span style={{ fontWeight: 700, color: textColor }}>{entry.word}</span>
+        {entry.transcription && (
+          <span style={{ color: mutedColor, fontSize: 12, marginLeft: 5 }}>{entry.transcription}</span>
+        )}
+        {entry.partOfSpeech && (
+          <span style={{ color: accentColor, fontStyle: "italic", fontSize: 12, marginLeft: 6 }}>{entry.partOfSpeech}</span>
+        )}
+        {/* Translations */}
         <span style={{ color: textColor }}> — {entry.translations.join(", ")}</span>
+        {/* First example + its translation */}
         {entry.examples?.[0] && (
-          <span style={{ color: mutedColor }}> · <em>{entry.examples[0]}</em></span>
+          <span>
+            <span style={{ color: mutedColor }}> · <em>"{entry.examples[0]}"</em></span>
+            {entry.exampleTranslations?.[0] && (
+              <span style={{ color: mutedColor }}> — {entry.exampleTranslations[0]}</span>
+            )}
+          </span>
         )}
       </span>
     );
@@ -42,7 +57,7 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
   if (inline) {
     return (
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#10b981", flexShrink: 0, marginTop: "0.35em" }} />
+        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: "0.35em" }} />
         <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", flex: 1 }}>{content()}</p>
       </div>
     );
@@ -50,7 +65,7 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
 
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-      <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#10b981", flexShrink: 0, marginTop: "0.35em" }} />
+      <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: "0.35em" }} />
       <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", flex: 1 }}>{content()}</p>
       <button
         onClick={onClose}

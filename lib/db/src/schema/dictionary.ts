@@ -7,7 +7,9 @@ export const dictionaryLookupsTable = pgTable("dictionary_lookups", {
   word: text("word").notNull(),
   translations: text("translations").array().notNull().default([]),
   partOfSpeech: text("part_of_speech"),
+  transcription: text("transcription"),             // AmE IPA
   examples: text("examples").array().notNull().default([]),
+  exampleTranslations: text("example_translations").array().notNull().default([]),
   lookedUpAt: timestamp("looked_up_at").defaultNow().notNull(),
 });
 

@@ -1,5 +1,3 @@
-import { useState, useRef, useEffect } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useLookupWord, getLookupWordQueryKey } from "@workspace/api-client-react";
 import { Loader2, BookOpen } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,88 +6,118 @@ import { Separator } from "@/components/ui/separator";
 interface DictionaryPopoverProps {
   word: string;
   context?: string;
-  isOpen: boolean;
-  onOpenChange: (open: boolean) => void;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
-export function DictionaryPopover({ word, context, isOpen, onOpenChange, children }: DictionaryPopoverProps) {
-  const cleanWord = word.toLowerCase().replace(/[^\w\s-]/g, "");
+export function DictionaryPopover({ word, context, children }: DictionaryPopoverProps) {
+  const cleanWord = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
   const { data: entry, isLoading, isError } = useLookupWord(
     { word: cleanWord, context },
-    { query: { enabled: isOpen && !!word, queryKey: getLookupWordQueryKey({ word: cleanWord, context }) } }
+    { query: { enabled: !!cleanWord, queryKey: getLookupWordQueryKey({ word: cleanWord, context }) } }
   );
 
-  return (
-    <Popover open={isOpen} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        {children}
-      </PopoverTrigger>
-      <PopoverContent 
-        className="w-80 p-0 shadow-xl border-border/60" 
-        align="start" 
-        side="bottom"
-        sideOffset={8}
-      >
-        <div className="p-4 bg-muted/30 border-b border-border/40 flex items-center justify-between">
-          <h4 className="font-serif font-bold text-lg text-primary">{word.replace(/[^\w\s-]/g, "")}</h4>
-          {entry?.partOfSpeech && (
-            <span className="text-xs font-mono px-2 py-1 bg-secondary rounded-md text-secondary-foreground">
-              {entry.partOfSpeech}
-            </span>
-          )}
-        </div>
-        
-        <ScrollArea className="max-h-[300px]">
-          <div className="p-4 space-y-4">
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground gap-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-sm">Looking up...</span>
-              </div>
-            ) : isError ? (
-              <div className="text-sm text-destructive py-2">
-                Could not look up word.
-              </div>
-            ) : entry ? (
-              <>
-                <div className="space-y-2">
-                  <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Translations</h5>
-                  <ul className="space-y-1">
-                    {entry.translations.map((translation, i) => (
-                      <li key={i} className="text-foreground font-medium flex items-start gap-2">
-                        <span className="text-muted-foreground text-xs mt-0.5">{i + 1}.</span>
-                        {translation}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+  return <>{children}</>;
+}
 
-                {entry.examples && entry.examples.length > 0 && (
-                  <>
-                    <Separator className="my-2 bg-border/40" />
-                    <div className="space-y-2">
-                      <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Examples</h5>
-                      <ul className="space-y-2">
-                        {entry.examples.map((example, i) => (
-                          <li key={i} className="text-sm text-foreground/80 italic font-serif border-l-2 border-primary/30 pl-3">
-                            "{example}"
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </>
-                )}
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground py-2 flex items-center gap-2">
-                <BookOpen className="h-4 w-4" />
-                No translation found.
-              </div>
-            )}
+// Standalone dictionary card used directly in reader panels (no Popover wrapper needed)
+export function DictionaryCard({
+  word,
+  context,
+  bg = "#ffffff",
+  textColor = "#1a1a1a",
+  mutedColor = "#6b7280",
+  borderColor = "rgba(0,0,0,0.09)",
+  accentColor = "#059669",
+}: {
+  word: string;
+  context?: string;
+  bg?: string;
+  textColor?: string;
+  mutedColor?: string;
+  borderColor?: string;
+  accentColor?: string;
+}) {
+  const cleanWord = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
+  const { data: entry, isLoading, isError } = useLookupWord(
+    { word: cleanWord, context },
+    { query: { enabled: !!cleanWord, queryKey: getLookupWordQueryKey({ word: cleanWord, context }) } }
+  );
+
+  if (isLoading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", color: mutedColor, fontSize: 13 }}>
+        <Loader2 size={14} style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
+        <span>Ищем «{word}»…</span>
+      </div>
+    );
+  }
+
+  if (isError || !entry) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", color: mutedColor, fontSize: 13 }}>
+        <BookOpen size={14} style={{ flexShrink: 0 }} />
+        <span>Не найдено для «{word}».</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ fontSize: 14, lineHeight: 1.55 }}>
+      {/* Header: word + transcription + part of speech */}
+      <div style={{ padding: "10px 14px 8px", borderBottom: `1px solid ${borderColor}`, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 700, fontSize: 16, color: textColor, fontFamily: "Georgia, serif" }}>
+          {entry.word}
+        </span>
+        {entry.transcription && (
+          <span style={{ fontSize: 13, color: accentColor, fontFamily: "monospace" }}>
+            {entry.transcription}
+          </span>
+        )}
+        {entry.partOfSpeech && (
+          <span style={{ fontSize: 11, color: mutedColor, fontStyle: "italic", marginLeft: "auto" }}>
+            {entry.partOfSpeech}
+          </span>
+        )}
+      </div>
+
+      <div style={{ padding: "8px 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* Translations */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: mutedColor, textTransform: "uppercase", marginBottom: 4 }}>
+            Перевод
           </div>
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {entry.translations.map((t, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 10, color: mutedColor, minWidth: 12, textAlign: "right" }}>{i + 1}.</span>
+                <span style={{ fontWeight: i === 0 ? 600 : 400, color: textColor }}>{t}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Examples with translations */}
+        {entry.examples && entry.examples.length > 0 && (
+          <div>
+            <div style={{ height: 1, background: borderColor, marginBottom: 8 }} />
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: mutedColor, textTransform: "uppercase", marginBottom: 6 }}>
+              Примеры
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {entry.examples.map((ex, i) => (
+                <div key={i} style={{ paddingLeft: 8, borderLeft: `2px solid ${accentColor}40` }}>
+                  <div style={{ fontStyle: "italic", color: textColor, opacity: 0.85 }}>"{ex}"</div>
+                  {entry.exampleTranslations?.[i] && (
+                    <div style={{ color: mutedColor, marginTop: 2, fontSize: 12 }}>
+                      {entry.exampleTranslations[i]}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

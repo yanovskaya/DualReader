@@ -77,10 +77,15 @@ export interface StartTranslationBody {
 }
 
 export interface DictionaryEntry {
+  /** The looked-up word or phrasal verb (may differ from query if a phrasal verb was detected) */
   word: string;
   translations: string[];
   partOfSpeech?: string;
+  /** AmE IPA transcription, e.g. /ˈwɔːtər/ */
+  transcription?: string;
   examples?: string[];
+  /** Russian translations of each example sentence (parallel array) */
+  exampleTranslations?: string[];
   lookedUpAt?: string;
 }
 

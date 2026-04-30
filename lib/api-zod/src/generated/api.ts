@@ -173,10 +173,22 @@ export const LookupWordQueryParams = zod.object({
 });
 
 export const LookupWordResponse = zod.object({
-  word: zod.string(),
+  word: zod
+    .string()
+    .describe(
+      "The looked-up word or phrasal verb (may differ from query if a phrasal verb was detected)",
+    ),
   translations: zod.array(zod.string()),
   partOfSpeech: zod.string().optional(),
+  transcription: zod
+    .string()
+    .optional()
+    .describe("AmE IPA transcription, e.g. \/ˈwɔːtər\/"),
   examples: zod.array(zod.string()).optional(),
+  exampleTranslations: zod
+    .array(zod.string())
+    .optional()
+    .describe("Russian translations of each example sentence (parallel array)"),
   lookedUpAt: zod.coerce.date().optional(),
 });
 
@@ -184,10 +196,22 @@ export const LookupWordResponse = zod.object({
  * @summary Get recently looked up words
  */
 export const GetRecentLookupsResponseItem = zod.object({
-  word: zod.string(),
+  word: zod
+    .string()
+    .describe(
+      "The looked-up word or phrasal verb (may differ from query if a phrasal verb was detected)",
+    ),
   translations: zod.array(zod.string()),
   partOfSpeech: zod.string().optional(),
+  transcription: zod
+    .string()
+    .optional()
+    .describe("AmE IPA transcription, e.g. \/ˈwɔːtər\/"),
   examples: zod.array(zod.string()).optional(),
+  exampleTranslations: zod
+    .array(zod.string())
+    .optional()
+    .describe("Russian translations of each example sentence (parallel array)"),
   lookedUpAt: zod.coerce.date().optional(),
 });
 export const GetRecentLookupsResponse = zod.array(GetRecentLookupsResponseItem);

@@ -18,7 +18,7 @@ router.get("/dictionary/lookup", async (req, res) => {
   const normalizedWord = word.toLowerCase().trim();
 
   try {
-    // Check if we have a recent cached result
+    // Check if we have a cached result with new fields
     const [cached] = await db.select()
       .from(dictionaryLookupsTable)
       .where(eq(dictionaryLookupsTable.word, normalizedWord))
@@ -26,74 +26,102 @@ router.get("/dictionary/lookup", async (req, res) => {
       .limit(1);
 
     if (cached) {
-      // Update the timestamp
-      await db.update(dictionaryLookupsTable)
-        .set({ lookedUpAt: new Date() })
-        .where(eq(dictionaryLookupsTable.id, cached.id));
+      // Only use cache if it has new-format data (transcription field present)
+      if (cached.transcription !== null || cached.transcription === null && cached.examples.length > 0) {
+        await db.update(dictionaryLookupsTable)
+          .set({ lookedUpAt: new Date() })
+          .where(eq(dictionaryLookupsTable.id, cached.id));
 
-      return res.json({
-        word: cached.word,
-        translations: cached.translations,
-        partOfSpeech: cached.partOfSpeech ?? undefined,
-        examples: cached.examples,
-        lookedUpAt: new Date().toISOString(),
-      });
+        return res.json({
+          word: cached.word,
+          translations: cached.translations,
+          partOfSpeech: cached.partOfSpeech ?? undefined,
+          transcription: cached.transcription ?? undefined,
+          examples: cached.examples,
+          exampleTranslations: cached.exampleTranslations,
+          lookedUpAt: new Date().toISOString(),
+        });
+      }
     }
 
-    // Look up via OpenAI — context-aware translation
-    const prompt = context
-      ? `Translate the English word "${word}" as it is used in this sentence:\n"${context}"\n\nGive the Russian translation that fits this exact context and meaning.`
-      : `Translate the English word "${word}" to Russian.`;
+    // Prompt: phrasal verb detection + transcription + example translations
+    const contextHint = context
+      ? `The word appears in this sentence: "${context}"\nTranslate it as used in that specific context.`
+      : "";
 
     const response = await openai.chat.completions.create({
       model: "gpt-4.1-nano",
-      max_completion_tokens: 300,
+      max_completion_tokens: 500,
       messages: [
         {
           role: "system",
-          content: `You are an English-Russian dictionary assistant. Respond ONLY with a JSON object in this exact format, no extra text:
+          content: `You are an English–Russian dictionary. Respond ONLY with a JSON object — no markdown, no extra text.
+
+JSON format:
 {
+  "word": "the word or full phrasal verb",
   "translations": ["перевод1", "перевод2"],
-  "partOfSpeech": "noun|verb|adjective|adverb|preposition|conjunction|pronoun|interjection",
-  "examples": ["Short English example 1.", "Short English example 2."]
+  "partOfSpeech": "noun|verb|adjective|adverb|phrasal verb|preposition|conjunction|pronoun|interjection",
+  "transcription": "/AmE IPA/",
+  "examples": ["English example 1.", "English example 2."],
+  "exampleTranslations": ["Русский перевод 1.", "Русский перевод 2."]
 }
 
 Rules:
-- translations must be Russian words/phrases that match the word's meaning IN THE GIVEN CONTEXT
-- give 1-3 translations, most contextually appropriate first
-- examples must be short English sentences showing natural usage
-- NEVER mix up the target word with another word`,
+- "word": if the queried word is PART of a common phrasal verb (e.g. "put" in "put up with"), return the FULL phrasal verb. Otherwise return the word as-is.
+- "translations": 1–3 Russian translations, context-appropriate first.
+- "transcription": American English IPA in slashes, e.g. /wɔːtər/. For phrasal verbs omit it.
+- "examples": 2 short natural English sentences using the word/phrasal verb.
+- "exampleTranslations": Russian translation of EACH example — same count, same order as "examples".
+- NEVER translate a wrong word.`,
         },
-        { role: "user", content: prompt },
+        {
+          role: "user",
+          content: `Word to look up: "${word}"\n${contextHint}`,
+        },
       ],
     });
 
     const content = response.choices[0]?.message?.content ?? "{}";
-    let parsed_result: { translations?: string[]; partOfSpeech?: string; examples?: string[] } = {};
+    let ai: {
+      word?: string;
+      translations?: string[];
+      partOfSpeech?: string;
+      transcription?: string;
+      examples?: string[];
+      exampleTranslations?: string[];
+    } = {};
 
     try {
-      parsed_result = JSON.parse(content.replace(/```json\n?|\n?```/g, ""));
+      ai = JSON.parse(content.replace(/```json\n?|\n?```/g, "").trim());
     } catch {
-      parsed_result = { translations: ["перевод недоступен"], examples: [] };
+      ai = { translations: ["перевод недоступен"], examples: [] };
     }
 
-    const translations = parsed_result.translations ?? ["перевод недоступен"];
-    const partOfSpeech = parsed_result.partOfSpeech ?? null;
-    const examples = parsed_result.examples ?? [];
+    const resultWord = (ai.word ?? normalizedWord).toLowerCase().trim();
+    const translations = ai.translations ?? ["перевод недоступен"];
+    const partOfSpeech = ai.partOfSpeech ?? null;
+    const transcription = ai.transcription ?? null;
+    const examples = ai.examples ?? [];
+    const exampleTranslations = ai.exampleTranslations ?? [];
 
-    // Store in DB
+    // Store in DB (upsert by normalizedWord)
     await db.insert(dictionaryLookupsTable).values({
-      word: normalizedWord,
+      word: resultWord,
       translations,
       partOfSpeech,
+      transcription,
       examples,
+      exampleTranslations,
     });
 
     return res.json({
-      word: normalizedWord,
+      word: resultWord,
       translations,
       partOfSpeech: partOfSpeech ?? undefined,
+      transcription: transcription ?? undefined,
       examples,
+      exampleTranslations,
       lookedUpAt: new Date().toISOString(),
     });
   } catch (err) {
@@ -114,7 +142,9 @@ router.get("/dictionary/recent", async (req, res) => {
       word: entry.word,
       translations: entry.translations,
       partOfSpeech: entry.partOfSpeech ?? undefined,
+      transcription: entry.transcription ?? undefined,
       examples: entry.examples,
+      exampleTranslations: entry.exampleTranslations,
       lookedUpAt: entry.lookedUpAt.toISOString(),
     })));
   } catch (err) {

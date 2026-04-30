@@ -45,31 +45,72 @@ function timeLeft(remaining: number) {
 
 // ── Dictionary entry ───────────────────────────────────────────────────────────
 function WordDict({ word, context, colors }: { word: string; context: string; colors: ThemeColors }) {
-  const clean = word.toLowerCase().replace(/[^\w-]/g, "");
+  const clean = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
   const { data: entry, isLoading, isError } = useLookupWord(
     { word: clean, context },
     { query: { enabled: !!clean, queryKey: getLookupWordQueryKey({ word: clean, context }) } }
   );
+
   if (isLoading) return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: colors.muted }}>
       <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Ищем «{word}»…
     </div>
   );
   if (isError || !entry) return <div style={{ fontSize: 14, color: colors.muted }}>Нет перевода для «{word}».</div>;
+
   return (
-    <div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: colors.text, marginBottom: 4 }}>
-        {word}
-        {entry.partOfSpeech && <span style={{ fontSize: 12, fontWeight: 400, color: colors.muted, marginLeft: 8, fontStyle: "italic" }}>{entry.partOfSpeech}</span>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      {/* Word header: word + transcription + part of speech */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: colors.heading, fontFamily: "Georgia, serif" }}>
+          {entry.word}
+        </span>
+        {entry.transcription && (
+          <span style={{ fontSize: 14, color: colors.accent, fontFamily: "monospace", letterSpacing: "0.02em" }}>
+            {entry.transcription}
+          </span>
+        )}
+        {entry.partOfSpeech && (
+          <span style={{ fontSize: 12, color: colors.muted, fontStyle: "italic" }}>
+            {entry.partOfSpeech}
+          </span>
+        )}
       </div>
-      <div style={{ fontSize: 15, color: colors.text, marginBottom: entry.examples?.length ? 8 : 0 }}>
-        {entry.translations.join(", ")}
+
+      {/* Translations */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {entry.translations.map((t, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 11, color: colors.muted, minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
+            <span style={{ fontSize: i === 0 ? 17 : 15, fontWeight: i === 0 ? 600 : 400, color: colors.text }}>
+              {t}
+            </span>
+          </div>
+        ))}
       </div>
-      {entry.examples?.map((ex, i) => (
-        <div key={i} style={{ fontSize: 13, color: colors.muted, fontStyle: "italic", fontFamily: "Georgia, serif", lineHeight: "1.5", marginTop: 4 }}>
-          {ex}
+
+      {/* Examples with Russian translations */}
+      {entry.examples && entry.examples.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.muted, textTransform: "uppercase" }}>
+            Примеры
+          </div>
+          {entry.examples.map((ex, i) => (
+            <div key={i} style={{ paddingLeft: 10, borderLeft: `2.5px solid ${colors.accent}50` }}>
+              <div style={{ fontSize: 14, fontStyle: "italic", color: colors.text, opacity: 0.88, fontFamily: "Georgia, serif", lineHeight: 1.55 }}>
+                "{ex}"
+              </div>
+              {entry.exampleTranslations?.[i] && (
+                <div style={{ fontSize: 13, color: colors.muted, marginTop: 3, lineHeight: 1.4 }}>
+                  {entry.exampleTranslations[i]}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+
     </div>
   );
 }

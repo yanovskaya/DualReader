@@ -410,16 +410,25 @@ components:
       properties:
         word:
           type: string
+          description: The looked-up word or phrasal verb (may differ from query if a phrasal verb was detected)
         translations:
           type: array
           items:
             type: string
         partOfSpeech:
           type: string
+        transcription:
+          type: string
+          description: AmE IPA transcription, e.g. /ˈwɔːtər/
         examples:
           type: array
           items:
             type: string
+        exampleTranslations:
+          type: array
+          items:
+            type: string
+          description: Russian translations of each example sentence (parallel array)
         lookedUpAt:
           type: string
           format: date-time
