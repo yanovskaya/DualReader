@@ -721,13 +721,13 @@ export default function ReaderPage() {
       {/* ── Two synced scroll panels ──────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: showHeader ? HEADER_H : PROG_H, transition: "padding-top 0.25s ease" }}>
 
-        {/* EN panel — takes 3/4 of space when RU is visible */}
+        {/* EN panel — takes 85% of space when RU is visible */}
         <div
           ref={enRef}
           onScroll={handleEnScroll}
           tabIndex={0}
           style={{
-            flex: 3,
+            flex: 17,
             overflowY: "auto",
             overflowX: "hidden",
             WebkitOverflowScrolling: "touch" as never,
@@ -796,12 +796,12 @@ export default function ReaderPage() {
               >✕</button>
             </div>
 
-            {/* RU scroll panel — 1/4 height, half font size */}
+            {/* RU scroll panel — 15% height, smaller font size */}
             <div
               ref={ruRef}
               onScroll={handleRuScroll}
               style={{
-                flex: 1,
+                flex: 3,
                 overflowY: "auto",
                 overflowX: "hidden",
                 WebkitOverflowScrolling: "touch" as never,
