@@ -147,19 +147,40 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
         <div style={row}>
           <div style={label}>Тема</div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {(Object.keys(THEMES) as Theme[]).map(t => (
-              <button key={t} onClick={() => setTheme(t)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12, background: THEMES[t].bg,
-                  border: settings.theme === t ? `3px solid ${colors.accent}` : `2px solid ${THEMES[t].border}`,
-                  boxShadow: settings.theme === t ? `0 0 0 2px ${colors.accent}30` : "none",
-                  transition: "all 0.15s",
-                }} />
-                <span style={{ fontSize: 11, color: settings.theme === t ? colors.text : colors.muted, fontWeight: settings.theme === t ? 600 : 400 }}>
-                  {THEME_LABELS[t]}
-                </span>
-              </button>
-            ))}
+            {(Object.keys(THEMES) as Theme[]).map(t => {
+              const active = settings.theme === t;
+              return (
+                <button key={t} onClick={() => setTheme(t)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
+                  {/* Swatch styled like a mini book page */}
+                  <div style={{ position: "relative", width: 44, height: 52 }}>
+                    {/* Page shadow / depth layers */}
+                    <div style={{ position: "absolute", bottom: 0, left: 2, right: 2, height: 48, background: THEMES[t].bg, borderRadius: "6px 6px 4px 4px", boxShadow: "1px 1px 3px rgba(0,0,0,0.18)", opacity: 0.6, transform: "rotate(-1.5deg)" }} />
+                    <div style={{ position: "absolute", bottom: 0, left: 1, right: 1, height: 50, background: THEMES[t].bg, borderRadius: "6px 6px 4px 4px", boxShadow: "1px 1px 2px rgba(0,0,0,0.13)", opacity: 0.8, transform: "rotate(0.7deg)" }} />
+                    {/* Main page */}
+                    <div style={{
+                      position: "absolute", bottom: 0, left: 0, right: 0, height: 52,
+                      borderRadius: "7px 7px 4px 4px",
+                      background: THEMES[t].bg,
+                      border: active ? `2.5px solid ${colors.accent}` : `1.5px solid ${THEMES[t].border || "rgba(0,0,0,0.12)"}`,
+                      boxShadow: active
+                        ? `0 0 0 3px ${colors.accent}30, 0 2px 8px rgba(0,0,0,0.14)`
+                        : "0 2px 6px rgba(0,0,0,0.10)",
+                      transition: "all 0.15s",
+                    }}>
+                      {/* Faint text lines to simulate book page */}
+                      <div style={{ padding: "8px 6px 0", display: "flex", flexDirection: "column", gap: 3 }}>
+                        {[100, 70, 85].map((w, i) => (
+                          <div key={i} style={{ height: 2, width: `${w}%`, borderRadius: 2, background: THEMES[t].text, opacity: 0.12 }} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, color: active ? colors.text : colors.muted, fontWeight: active ? 600 : 400 }}>
+                    {THEME_LABELS[t]}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
