@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-dcb3ec6a'], (function (workbox) { 'use strict';
+define(['./workbox-ebf8facd'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -82,18 +82,39 @@ define(['./workbox-dcb3ec6a'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.8ggp6mp0ies"
+    "revision": "0.kd410fet4ds"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^\/api\//, new workbox.NetworkFirst({
-    "cacheName": "api-cache",
-    "networkTimeoutSeconds": 10,
+  workbox.registerRoute(/^\/api\/books\/\d+\/paragraphs(\?.*)?$/, new workbox.CacheFirst({
+    "cacheName": "paragraphs-cache",
     plugins: [new workbox.ExpirationPlugin({
-      maxEntries: 100,
-      maxAgeSeconds: 86400
+      maxEntries: 2000,
+      maxAgeSeconds: 7776000
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
+  workbox.registerRoute(/^\/api\/books\/\d+(\/translation-status|\/search)?(\?.*)?$/, new workbox.NetworkFirst({
+    "cacheName": "books-cache",
+    "networkTimeoutSeconds": 8,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 200,
+      maxAgeSeconds: 604800
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
+  workbox.registerRoute(/^\/api\/lookup-word/, new workbox.NetworkFirst({
+    "cacheName": "dict-cache",
+    "networkTimeoutSeconds": 6,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 1000,
+      maxAgeSeconds: 2592000
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
     })]
   }), 'GET');
 

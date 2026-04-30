@@ -66,15 +66,44 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
+            // Paragraphs are immutable once translated — cache aggressively for offline reading
+            urlPattern: /^\/api\/books\/\d+\/paragraphs(\?.*)?$/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "paragraphs-cache",
+              expiration: {
+                maxEntries: 2000,
+                maxAgeSeconds: 60 * 60 * 24 * 90, // 90 days
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Book metadata — network first, fall back to cache
+            urlPattern: /^\/api\/books\/\d+(\/translation-status|\/search)?(\?.*)?$/,
             handler: "NetworkFirst",
             options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 10,
+              cacheName: "books-cache",
+              networkTimeoutSeconds: 8,
               expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24,
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 24 * 7,
               },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Dictionary lookups — network first
+            urlPattern: /^\/api\/lookup-word/,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "dict-cache",
+              networkTimeoutSeconds: 6,
+              expiration: {
+                maxEntries: 1000,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+              cacheableResponse: { statuses: [0, 200] },
             },
           },
         ],

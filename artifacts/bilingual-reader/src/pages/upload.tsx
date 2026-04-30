@@ -88,8 +88,8 @@ export default function UploadPage() {
         body: JSON.stringify({ batchSize: 8 }),
       }).catch(() => {});
 
-      toast({ title: "Book uploaded", description: "Translation is running. You can read as it progresses." });
-      setLocation(`/reader/${book.id}`);
+      toast({ title: "Книга загружена", description: "Перевод запущен. Дождитесь завершения — книга будет доступна офлайн." });
+      setLocation(`/processing/${book.id}`);
     } catch (err) {
       toast({
         title: "Upload failed",
@@ -208,7 +208,7 @@ export default function UploadPage() {
 
           {file && !isUploading && (
             <p className="text-center text-sm text-muted-foreground">
-              Translation starts immediately after upload. You can read while it runs.
+              После загрузки дождитесь окончания перевода — потом книга будет доступна офлайн.
             </p>
           )}
         </form>
