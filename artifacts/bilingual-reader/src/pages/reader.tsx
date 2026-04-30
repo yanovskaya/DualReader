@@ -285,6 +285,9 @@ export default function ReaderPage() {
   const [totalBatches, setTotalBatches] = useState(1);
   const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
   const loadingNextBatch = useRef(false);
+  // Track the very first batch we loaded this session — to account for paragraphs
+  // from batches 1..(startBatch-1) that are NOT in displayParagraphs but were read before
+  const startBatchRef = useRef(savedProgress?.lastBatch ?? 1);
   // Scroll ratio to restore after paragraphs load (null = nothing pending)
   const pendingRestoreRatio = useRef<number | null>(savedProgress?.scrollRatio ?? null);
 
@@ -576,7 +579,15 @@ export default function ReaderPage() {
   // Progress info
   const translatedPct = statusData ? Math.round(statusData.progressPercent ?? 0) : null;
   const totalParas = book?.totalParagraphs ?? 0;
-  const remaining = Math.max(0, totalParas - allParagraphs.length);
+  // Global read %: scrollPct is relative to currently-loaded paragraphs only.
+  // Batches before startBatch were read in a previous session — count their paragraphs too.
+  const parasBeforeStart = (startBatchRef.current - 1) * PAGE_SIZE;
+  const globalReadPct = totalParas > 0
+    ? Math.min(1, (parasBeforeStart + scrollPct * displayParagraphs.length) / totalParas)
+    : scrollPct;
+  // Remaining = paragraphs not yet passed by the reader
+  const parasRead = globalReadPct * totalParas;
+  const remainingParas = Math.max(0, totalParas - parasRead);
 
   if (isLoadingBook) {
     return (
@@ -617,7 +628,7 @@ export default function ReaderPage() {
         }}
       >
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: PROG_H, background: colors.border }}>
-          <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
+          <div style={{ width: `${globalReadPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
         </div>
         {/* Chevron indicator — only shown when header is hidden */}
         {!showHeader && (
@@ -660,8 +671,8 @@ export default function ReaderPage() {
               {book.title}
             </div>
             <div style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
-              {Math.round(scrollPct * 100)}%
-              {remaining > 0 && ` · ${timeLeft(remaining)} осталось`}
+              {Math.round(globalReadPct * 100)}%
+              {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
               {translatedPct !== null && translatedPct < 100 && (
                 <span style={{ marginLeft: 6, color: colors.accent }}>⟳ {translatedPct}% пер.</span>
               )}
@@ -815,7 +826,7 @@ export default function ReaderPage() {
           fontSize={settings.fontSize - 1}
           onNavigate={ch => navigateToChapter(ch.id, ch.position)}
           onClose={() => setShowToc(false)}
-          readingPct={scrollPct}
+          readingPct={globalReadPct}
           totalParagraphs={book?.totalParagraphs ?? 0}
         />
       )}
