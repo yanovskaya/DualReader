@@ -21,6 +21,7 @@ import type {
   BookStats,
   CreateBookBody,
   DictionaryEntry,
+  GetBookChapters200,
   HealthStatus,
   ListParagraphsParams,
   LookupWordParams,
@@ -528,6 +529,93 @@ export function useListParagraphs<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListParagraphsQueryOptions(id, params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get chapter headings for a book
+ */
+export const getGetBookChaptersUrl = (id: number) => {
+  return `/api/books/${id}/chapters`;
+};
+
+export const getBookChapters = async (
+  id: number,
+  options?: RequestInit,
+): Promise<GetBookChapters200> => {
+  return customFetch<GetBookChapters200>(getGetBookChaptersUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBookChaptersQueryKey = (id: number) => {
+  return [`/api/books/${id}/chapters`] as const;
+};
+
+export const getGetBookChaptersQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBookChapters>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBookChapters>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBookChaptersQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getBookChapters>>> = ({
+    signal,
+  }) => getBookChapters(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBookChapters>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBookChaptersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBookChapters>>
+>;
+export type GetBookChaptersQueryError = ErrorType<void>;
+
+/**
+ * @summary Get chapter headings for a book
+ */
+
+export function useGetBookChapters<
+  TData = Awaited<ReturnType<typeof getBookChapters>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBookChapters>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBookChaptersQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -100,6 +100,24 @@ export const ListParagraphsResponse = zod.object({
 });
 
 /**
+ * @summary Get chapter headings for a book
+ */
+export const GetBookChaptersParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetBookChaptersResponse = zod.object({
+  chapters: zod.array(
+    zod.object({
+      id: zod.number(),
+      position: zod.number(),
+      originalText: zod.string(),
+      translatedText: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
  * @summary Get translation progress for a book
  */
 export const GetTranslationStatusParams = zod.object({

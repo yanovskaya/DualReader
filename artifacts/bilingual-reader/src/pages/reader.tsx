@@ -7,12 +7,15 @@ import {
   getListParagraphsQueryKey,
   useGetTranslationStatus,
   getGetTranslationStatusQueryKey,
+  useGetBookChapters,
+  getGetBookChaptersQueryKey,
   useLookupWord,
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2 } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
+import { TocDrawer } from "@/components/toc-drawer";
 import {
   useReaderSettings,
   THEMES,
@@ -210,8 +213,11 @@ export default function ReaderPage() {
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
+  const [showToc, setShowToc] = useState(false);
   // Global toggle: show or hide Russian translations
   const [showTranslations, setShowTranslations] = useState(true);
+  // Chapter navigation: id of paragraph we want to scroll to after load
+  const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
   // Two synced scroll panels — EN on top, RU on bottom
   const enRef = useRef<HTMLDivElement>(null);
@@ -240,6 +246,10 @@ export default function ReaderPage() {
       refetchInterval: 5000,
       queryKey: getGetTranslationStatusQueryKey(bookId),
     },
+  });
+
+  const { data: chaptersData } = useGetBookChapters(bookId, {
+    query: { enabled: !!bookId, queryKey: getGetBookChaptersQueryKey(bookId) },
   });
 
   // Accumulate paragraphs as batches load
@@ -273,6 +283,28 @@ export default function ReaderPage() {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [totalBatches]);
+
+  // Navigate to a chapter: load enough batches, then scroll to the paragraph element
+  const navigateToChapter = useCallback((paragraphId: number, position: number) => {
+    const neededBatch = Math.ceil((position + 1) / PAGE_SIZE);
+    setPendingScrollId(paragraphId);
+    setCurrentBatch(prev => Math.max(prev, neededBatch));
+  }, []);
+
+  // After batches load: if we have a pending scroll target, execute it
+  useEffect(() => {
+    if (pendingScrollId === null) return;
+    const target = allParagraphs.find(p => p.id === pendingScrollId);
+    if (!target) return; // not loaded yet — will retry when more batches arrive
+    const el = document.getElementById(`para-${pendingScrollId}`);
+    const container = enRef.current;
+    if (el && container) {
+      // offsetTop relative to scroll container
+      const top = el.offsetTop - container.offsetTop;
+      container.scrollTo({ top: Math.max(0, top - 12), behavior: "smooth" });
+    }
+    setPendingScrollId(null);
+  }, [allParagraphs, pendingScrollId]);
 
   // Sync scroll between EN and RU panels without ping-pong
   const clearSyncTimer = useCallback(() => {
@@ -384,7 +416,10 @@ export default function ReaderPage() {
               )}
             </div>
           </div>
-          <button onClick={() => setShowSettings(s => !s)} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+          <button onClick={() => { setShowToc(s => !s); setShowSettings(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+            <List size={17} />
+          </button>
+          <button onClick={() => { setShowSettings(s => !s); setShowToc(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Settings2 size={17} />
           </button>
         </div>
@@ -417,17 +452,18 @@ export default function ReaderPage() {
           )}
 
           {allParagraphs.map(p => (
-            <BookParagraph
-              key={p.id}
-              paragraph={p}
-              mode="en"
-              onWordDoubleClick={handleWordDoubleClick}
-              colors={colors}
-              fontSize={settings.fontSize}
-              fontFamily={bodyFont}
-              headingFontFamily={headingFont}
-              lineHeight={lineHeight}
-            />
+            <div key={p.id} id={`para-${p.id}`}>
+              <BookParagraph
+                paragraph={p}
+                mode="en"
+                onWordDoubleClick={handleWordDoubleClick}
+                colors={colors}
+                fontSize={settings.fontSize}
+                fontFamily={bodyFont}
+                headingFontFamily={headingFont}
+                lineHeight={lineHeight}
+              />
+            </div>
           ))}
 
           {/* Sentinel — triggers next batch load */}
@@ -514,6 +550,17 @@ export default function ReaderPage() {
           </div>
         )}
       </div>
+
+      {/* ── TOC drawer ───────────────────────────────────────────────── */}
+      {showToc && (
+        <TocDrawer
+          chapters={chaptersData?.chapters ?? []}
+          colors={colors}
+          fontSize={settings.fontSize - 1}
+          onNavigate={ch => navigateToChapter(ch.id, ch.position)}
+          onClose={() => setShowToc(false)}
+        />
+      )}
 
       {/* ── Settings sheet ───────────────────────────────────────────── */}
       {showSettings && (

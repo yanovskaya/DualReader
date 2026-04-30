@@ -84,6 +84,13 @@ export interface DictionaryEntry {
   lookedUpAt?: string;
 }
 
+export interface Chapter {
+  id: number;
+  position: number;
+  originalText: string;
+  translatedText?: string | null;
+}
+
 export interface BookStats {
   bookId: number;
   totalParagraphs: number;
@@ -96,6 +103,10 @@ export interface BookStats {
 export type ListParagraphsParams = {
   page?: number;
   pageSize?: number;
+};
+
+export type GetBookChapters200 = {
+  chapters: Chapter[];
 };
 
 export type LookupWordParams = {

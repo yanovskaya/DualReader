@@ -166,6 +166,50 @@ router.get("/books/:id/paragraphs", async (req, res) => {
   }
 });
 
+// Heading detection — mirrors client-side isHeadingParagraph in sentences.ts
+function isHeading(text: string): boolean {
+  const t = text.trim();
+  if (t.length > 120) return false;
+  if (/^\d+\.\s+\S/.test(t)) return true;
+  if (/^(chapter|part|section|prologue|epilogue|afterword|foreword|preface|act|scene|book)\b/i.test(t)) return true;
+  if (/^[IVXLCDM]+\.?\s*$/.test(t)) return true;
+  if (t.length <= 60 && t === t.toUpperCase() && /^[A-Z][A-Z\s\d'"-]{2,}$/.test(t)) return true;
+  return false;
+}
+
+// GET /books/:id/chapters
+router.get("/books/:id/chapters", async (req, res) => {
+  const parsed = GetBookParams.safeParse(req.params);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
+
+  try {
+    const book = await db.select().from(booksTable).where(eq(booksTable.id, parsed.data.id)).limit(1);
+    if (!book.length) return res.status(404).json({ error: "Book not found" });
+
+    // Fetch all paragraphs ordered by position; filter headings server-side
+    const paragraphs = await db.select({
+      id: paragraphsTable.id,
+      position: paragraphsTable.position,
+      originalText: paragraphsTable.originalText,
+      translatedText: paragraphsTable.translatedText,
+    }).from(paragraphsTable)
+      .where(eq(paragraphsTable.bookId, parsed.data.id))
+      .orderBy(paragraphsTable.position);
+
+    const chapters = paragraphs.filter(p => isHeading(p.originalText)).map(p => ({
+      id: p.id,
+      position: p.position,
+      originalText: p.originalText,
+      translatedText: p.translatedText ?? null,
+    }));
+
+    return res.json({ chapters });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get chapters");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /books/:id/stats
 router.get("/books/:id/stats", async (req, res) => {
   const parsed = GetBookStatsParams.safeParse(req.params);

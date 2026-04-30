@@ -126,6 +126,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/ParagraphsPage"
 
+  /books/{id}/chapters:
+    get:
+      operationId: getBookChapters
+      tags: [books]
+      summary: Get chapter headings for a book
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of chapter headings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chapters]
+                properties:
+                  chapters:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Chapter"
+        "404":
+          description: Book not found
+
   /books/{id}/translation-status:
     get:
       operationId: getTranslationStatus
@@ -399,6 +426,23 @@ components:
       required:
         - word
         - translations
+
+    Chapter:
+      type: object
+      properties:
+        id:
+          type: integer
+        position:
+          type: integer
+        originalText:
+          type: string
+        translatedText:
+          type: string
+          nullable: true
+      required:
+        - id
+        - position
+        - originalText
 
     BookStats:
       type: object
