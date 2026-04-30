@@ -94,7 +94,7 @@ export default defineConfig({
           },
           {
             // Dictionary lookups — network first
-            urlPattern: /^\/api\/lookup-word/,
+            urlPattern: /^\/api\/dictionary\/lookup/,
             handler: "NetworkFirst",
             options: {
               cacheName: "dict-cache",
