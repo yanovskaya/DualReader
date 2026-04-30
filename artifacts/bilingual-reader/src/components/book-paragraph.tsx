@@ -39,13 +39,13 @@ export function BookParagraph({
 
     if (isHeading) {
       return (
-        <div style={{ padding: "18px 16px 10px", borderBottom: `1px solid ${colors.border}` }}>
+        <div style={{ padding: "6px 12px 4px", borderBottom: `1px solid ${colors.border}` }}>
           <h2 style={{
             margin: 0,
-            fontSize: Math.round(fontSize * 1.15),
+            fontSize: Math.round(fontSize * 1.1),
             fontFamily: headingFontFamily,
             fontWeight: 700,
-            lineHeight: 1.3,
+            lineHeight: 1.25,
             color: colors.accent,
             wordBreak: "break-word",
           }}>
@@ -56,7 +56,7 @@ export function BookParagraph({
     }
 
     return (
-      <div style={{ padding: "10px 16px", borderBottom: `1px solid ${colors.border}` }}>
+      <div style={{ padding: "4px 12px", borderBottom: `1px solid ${colors.border}` }}>
         {ruContent ? (
           <p style={{
             margin: 0, fontSize, lineHeight, fontFamily,
@@ -68,9 +68,7 @@ export function BookParagraph({
             {ruContent}
           </p>
         ) : (
-          <p style={{ margin: 0, fontSize: 13, color: colors.border, fontStyle: "italic" }}>
-            …переводится…
-          </p>
+          <p style={{ margin: 0, fontSize, color: colors.border, fontStyle: "italic" }}>…</p>
         )}
       </div>
     );

@@ -398,16 +398,15 @@ export default function ReaderPage() {
       {/* ── Two synced scroll panels ──────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: HEADER_H }}>
 
-        {/* EN panel */}
+        {/* EN panel — takes 3/4 of space when RU is visible */}
         <div
           ref={enRef}
           onScroll={handleEnScroll}
           style={{
-            flex: showTranslations ? 1 : 1,
+            flex: 3,
             overflowY: "auto",
             overflowX: "hidden",
             WebkitOverflowScrolling: "touch" as never,
-            borderBottom: showTranslations ? `2px solid ${colors.border}` : "none",
           }}
           onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
         >
@@ -471,7 +470,7 @@ export default function ReaderPage() {
               >✕</button>
             </div>
 
-            {/* RU scroll panel */}
+            {/* RU scroll panel — 1/4 height, half font size */}
             <div
               ref={ruRef}
               onScroll={handleRuScroll}
@@ -488,7 +487,7 @@ export default function ReaderPage() {
                   paragraph={p}
                   mode="ru"
                   colors={colors}
-                  fontSize={settings.fontSize}
+                  fontSize={Math.max(10, Math.round(settings.fontSize / 2))}
                   fontFamily={bodyFont}
                   headingFontFamily={headingFont}
                   lineHeight={lineHeight}
