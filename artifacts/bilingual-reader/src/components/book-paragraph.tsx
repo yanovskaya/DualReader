@@ -20,6 +20,7 @@ interface BookParagraphProps {
   fontFamily: string;
   headingFontFamily: string;
   lineHeight: string;
+  padH: string;  // horizontal margin per page
 }
 
 export function BookParagraph({
@@ -33,6 +34,7 @@ export function BookParagraph({
   fontFamily,
   headingFontFamily,
   lineHeight,
+  padH,
 }: BookParagraphProps) {
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingWord = useRef<{ word: string; sentenceIdx: number; charStart: number } | null>(null);
@@ -83,7 +85,7 @@ export function BookParagraph({
   // ── Chapter heading ──────────────────────────────────────────────────────
   if (isHeading) {
     return (
-      <div style={{ paddingTop: 32, paddingBottom: 10 }}>
+      <div style={{ paddingTop: 32, paddingBottom: 10, paddingLeft: padH, paddingRight: padH, breakInside: "avoid" }}>
         <h2 style={{
           fontSize: Math.round(fontSize * 1.28),
           fontFamily: headingFontFamily,
@@ -101,7 +103,7 @@ export function BookParagraph({
 
   // ── Normal paragraph ─────────────────────────────────────────────────────
   return (
-    <div onClick={handleParagraphClick} style={{ padding: "3px 0", cursor: "pointer" }}>
+    <div onClick={handleParagraphClick} style={{ padding: `3px ${padH}`, cursor: "pointer", breakInside: "avoid" }}>
       <p style={{
         fontSize,
         lineHeight,
