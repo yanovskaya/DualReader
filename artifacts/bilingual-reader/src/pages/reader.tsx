@@ -286,10 +286,10 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   if (panel.kind === "hidden") return null;
   return (
     <>
-      {/* Backdrop — tap anywhere outside to close */}
+      {/* Backdrop — tap anywhere outside to close (transparent, no dimming) */}
       <div
         onClick={onClose}
-        style={{ position: "fixed", inset: 0, zIndex: 39, background: "rgba(0,0,0,0.35)" }}
+        style={{ position: "fixed", inset: 0, zIndex: 39 }}
       />
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
