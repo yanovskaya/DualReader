@@ -369,7 +369,9 @@ export default function ReaderPage() {
 
   const mainRef = useRef<HTMLDivElement>(null);
   const lastScrollY = useRef(0);
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const panelOpen = useRef(false);
+  const settingsOpen = useRef(false);
+  const totalPagesRef = useRef(1);
 
   const { data: book, isLoading: isLoadingBook } = useGetBook(bookId, {
     query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
@@ -397,6 +399,53 @@ export default function ReaderPage() {
     }
   );
 
+  // Keep refs in sync so window-level handlers can read latest values
+  useEffect(() => { panelOpen.current = panel.kind !== "hidden"; }, [panel.kind]);
+  useEffect(() => { settingsOpen.current = showSettings; }, [showSettings]);
+  useEffect(() => { totalPagesRef.current = paragraphsData?.totalPages ?? 1; }, [paragraphsData?.totalPages]);
+
+  // ── Fix 1: Sync body/html background with current theme ─────────────────
+  useEffect(() => {
+    const prev = document.body.style.background;
+    const prevHtml = document.documentElement.style.background;
+    document.body.style.background = colors.bg;
+    document.documentElement.style.background = colors.bg;
+    return () => {
+      document.body.style.background = prev;
+      document.documentElement.style.background = prevHtml;
+    };
+  }, [colors.bg]);
+
+  // ── Fix 2: Window-level swipe detection (works even on scrollable divs) ──
+  useEffect(() => {
+    let sx = 0, sy = 0;
+    const onStart = (e: TouchEvent) => {
+      sx = e.touches[0].clientX;
+      sy = e.touches[0].clientY;
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (panelOpen.current || settingsOpen.current) return;
+      const dx = e.changedTouches[0].clientX - sx;
+      const dy = Math.abs(e.changedTouches[0].clientY - sy);
+      // Horizontal swipe: dx must dominate and exceed threshold
+      if (Math.abs(dx) > 70 && dy < Math.abs(dx) * 0.7) {
+        setPage(p => {
+          const next = dx < 0 ? Math.min(p + 1, totalPagesRef.current) : Math.max(p - 1, 1);
+          if (next !== p) { savePg(bookId, next); setTimeout(() => mainRef.current?.scrollTo({ top: 0 }), 0); }
+          return next;
+        });
+        setPanel({ kind: "hidden" });
+        setSelectedToken(null);
+      }
+    };
+    window.addEventListener("touchstart", onStart, { passive: true });
+    window.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchend", onEnd);
+    };
+  }, [bookId]);
+
   const goToPage = useCallback((nextPage: number) => {
     const total = paragraphsData?.totalPages ?? 1;
     if (nextPage < 1 || nextPage > total) return;
@@ -415,20 +464,6 @@ export default function ReaderPage() {
     lastScrollY.current = top;
   }, []);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  }, []);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!touchStart.current) return;
-    const dx = e.changedTouches[0].clientX - touchStart.current.x;
-    const dy = Math.abs(e.changedTouches[0].clientY - touchStart.current.y);
-    touchStart.current = null;
-    if (Math.abs(dx) > 65 && dy < 80) {
-      if (dx < 0) goToPage(page + 1);
-      else goToPage(page - 1);
-    }
-  }, [goToPage, page]);
 
   // Tap zone handler — left 30% = prev, right 30% = next, center = toggle header/settings
   const handleContentTap = useCallback((e: React.MouseEvent) => {
@@ -539,8 +574,6 @@ export default function ReaderPage() {
       <div
         ref={mainRef}
         onScroll={handleScroll}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
         onClick={handleContentTap}
         style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as never, paddingTop: 50 }}
       >

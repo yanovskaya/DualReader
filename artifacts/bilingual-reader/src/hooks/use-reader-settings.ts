@@ -140,7 +140,7 @@ function load(): ReaderSettings {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        theme: "sepia",
+        theme: "white",
         fontSize: FONT_SIZE_DEFAULT,
         fontFamily: "serif",
         lineSpacing: "normal",
@@ -149,7 +149,7 @@ function load(): ReaderSettings {
       };
     }
   } catch {}
-  return { theme: "sepia", fontSize: FONT_SIZE_DEFAULT, fontFamily: "serif", lineSpacing: "normal", margin: "normal" };
+  return { theme: "white", fontSize: FONT_SIZE_DEFAULT, fontFamily: "serif", lineSpacing: "normal", margin: "normal" };
 }
 
 export function useReaderSettings() {
