@@ -291,6 +291,20 @@ export default function ReaderPage() {
     setCurrentBatch(prev => Math.max(prev, neededBatch));
   }, []);
 
+  // When RU panel becomes visible again, sync its position to current EN position
+  useEffect(() => {
+    if (!showTranslations) return;
+    const timer = setTimeout(() => {
+      const en = enRef.current;
+      const ru = ruRef.current;
+      if (!en || !ru) return;
+      const enScrollable = en.scrollHeight - en.clientHeight;
+      const ratio = enScrollable > 0 ? en.scrollTop / enScrollable : 0;
+      ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+    }, 50); // wait for panel to mount + render
+    return () => clearTimeout(timer);
+  }, [showTranslations]);
+
   // After batches load: if we have a pending scroll target, execute it
   useEffect(() => {
     if (pendingScrollId === null) return;
