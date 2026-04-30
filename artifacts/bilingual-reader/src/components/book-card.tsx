@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Book } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useDeleteBook, getListBooksQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { deleteBookCache } from "@/lib/idb";
 import { format } from "date-fns";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 
@@ -54,6 +55,8 @@ export function BookCard({ book }: { book: Book }) {
   function handleConfirmDelete(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    // Clean up IDB cache alongside server deletion
+    deleteBookCache(book.id).catch(() => {});
     deleteBook({ id: book.id });
   }
 

@@ -3,8 +3,6 @@ import { useParams, Link } from "wouter";
 import {
   useGetBook,
   getGetBookQueryKey,
-  useListParagraphs,
-  getListParagraphsQueryKey,
   useGetTranslationStatus,
   getGetTranslationStatusQueryKey,
   useGetBookChapters,
@@ -12,6 +10,7 @@ import {
   useLookupWord,
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
+import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
@@ -333,10 +332,10 @@ export default function ReaderPage() {
     query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
   });
 
-  const { data: paragraphsData, isSuccess } = useListParagraphs(
+  const { data: paragraphsData, isSuccess } = useParagraphsOffline(
     bookId,
-    { page: currentBatch, pageSize: PAGE_SIZE },
-    { query: { enabled: !!bookId, queryKey: getListParagraphsQueryKey(bookId, { page: currentBatch, pageSize: PAGE_SIZE }) } }
+    currentBatch,
+    !!bookId,
   );
 
   const { data: statusData } = useGetTranslationStatus(bookId, {

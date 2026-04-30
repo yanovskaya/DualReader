@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { BookOpen, CheckCircle2, WifiOff } from "lucide-react";
 import { useGetTranslationStatus, useGetBook } from "@workspace/api-client-react";
+import { saveParagraphPage, saveBook, CachedParagraphsPage } from "@/lib/idb";
 
 // SVG arc progress ring
 function ProgressRing({ pct, size = 180, stroke = 10 }: { pct: number; size?: number; stroke?: number }) {
@@ -47,8 +48,8 @@ export default function ProcessingPage() {
     },
   });
 
-  // Pre-cache all paragraph pages so book works offline
-  const preCacheAll = useCallback(async (total: number) => {
+  // Save all paragraph pages to IndexedDB so book works offline
+  const preCacheAll = useCallback(async (total: number, bookData?: typeof book) => {
     if (cachingDoneRef.current) return;
     cachingDoneRef.current = true;
     setPhase("caching");
@@ -59,32 +60,40 @@ export default function ProcessingPage() {
 
     for (let page = 1; page <= pages; page++) {
       try {
-        await fetch(`/api/books/${bookId}/paragraphs?page=${page}&pageSize=${pageSize}`);
+        const res = await fetch(`/api/books/${bookId}/paragraphs?page=${page}&pageSize=${pageSize}`);
+        if (res.ok) {
+          const data = await res.json() as CachedParagraphsPage["data"];
+          await saveParagraphPage(bookId, page, data);
+        }
       } catch {
-        // offline or server error — still continue
+        // Network error — skip this page (user can reload)
       }
       setCachedPages(page);
     }
 
-    // Cache book metadata too
-    try { await fetch(`/api/books/${bookId}`); } catch { /* ignore */ }
+    // Save book metadata to IDB too
+    if (bookData) {
+      await saveBook({
+        id: bookData.id,
+        title: bookData.title,
+        author: bookData.author ?? null,
+        language: bookData.language ?? "en",
+        totalParagraphs: bookData.totalParagraphs ?? total,
+        translatedParagraphs: bookData.translatedParagraphs ?? total,
+        translationStatus: "completed",
+        cachedAt: Date.now(),
+      }).catch(() => {});
+    }
 
     setPhase("ready");
   }, [bookId]);
 
-  // When translation completes, kick off caching
+  // When translation completes (or was already done), kick off IDB save
   useEffect(() => {
     if (status?.status === "completed" && !cachingDoneRef.current) {
-      preCacheAll(status.totalParagraphs);
+      preCacheAll(status.totalParagraphs, book);
     }
-  }, [status?.status, status?.totalParagraphs, preCacheAll]);
-
-  // If there's no pending translation on mount (already done), go straight to caching
-  useEffect(() => {
-    if (status?.status === "completed" && !cachingDoneRef.current) {
-      preCacheAll(status.totalParagraphs);
-    }
-  }, [status, preCacheAll]);
+  }, [status?.status, status?.totalParagraphs, book, preCacheAll]);
 
   const translationPct = status?.progressPercent ?? 0;
   const cachePct = totalPages > 0 ? Math.round((cachedPages / totalPages) * 100) : 0;
