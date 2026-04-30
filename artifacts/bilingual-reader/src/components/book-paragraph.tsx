@@ -31,13 +31,10 @@ export function BookParagraph({
   const isHeading = isHeadingParagraph(text);
 
   const rawTokens: string[] = text.match(/[\w''\u2019-]+|[^\w\s]+|\s+/g) ?? [];
-  let charPos = 0;
-  const tokens: { token: string; isWord: boolean }[] = rawTokens.map((token: string) => {
-    charPos += token.length;
-    const isWord = /[\w''\u2019-]+/.test(token) && token.trim().length > 0;
-    return { token, isWord };
-  });
-  void charPos;
+  const tokens: { token: string; isWord: boolean }[] = rawTokens.map((token: string) => ({
+    token,
+    isWord: /[\w''\u2019-]+/.test(token) && token.trim().length > 0,
+  }));
 
   const handleWordTap = useCallback(
     (word: string) => {
@@ -53,98 +50,105 @@ export function BookParagraph({
     [paragraph, onWordDoubleClick]
   );
 
-  // ── Chapter heading ──────────────────────────────────────────────────────
+  // Shared cell style — critical: min-width:0 prevents flex overflow
+  const cellStyle = (side: "en" | "ru"): React.CSSProperties => ({
+    flexShrink: 0,
+    flexGrow: 0,
+    width: showTranslation ? "50%" : (side === "en" ? "100%" : "0%"),
+    minWidth: 0,
+    overflow: "hidden",
+    boxSizing: "border-box",
+    padding: isHeading ? "22px 10px 8px" : "8px 10px",
+    display: showTranslation || side === "en" ? "block" : "none",
+    transition: "width 0.2s ease",
+  });
+
+  const enText = (
+    <p style={{
+      margin: 0,
+      fontSize,
+      lineHeight,
+      fontFamily,
+      color: colors.text,
+      wordBreak: "break-word",
+      overflowWrap: "break-word",
+      hyphens: "auto",
+    }}>
+      {tokens.map(({ token, isWord }, i) => {
+        if (!isWord) return <span key={i}>{token}</span>;
+        const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
+        return (
+          <span
+            key={i}
+            onClick={e => { e.stopPropagation(); handleWordTap(clean); }}
+            style={{ cursor: "pointer" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
+            {token}
+          </span>
+        );
+      })}
+    </p>
+  );
+
+  const ruText = paragraph.isTranslated && paragraph.translatedText ? (
+    <p style={{
+      margin: 0,
+      fontSize: Math.max(12, fontSize - 1),
+      lineHeight,
+      fontFamily,
+      color: colors.muted,
+      wordBreak: "break-word",
+      overflowWrap: "break-word",
+      hyphens: "auto",
+      fontStyle: "italic",
+    }}>
+      {paragraph.translatedText}
+    </p>
+  ) : (
+    <span style={{ fontSize: 12, color: colors.border, fontStyle: "italic" }}>…</span>
+  );
+
+  // ── Chapter heading ────────────────────────────────────────────────────────
   if (isHeading) {
+    const headStyle: React.CSSProperties = {
+      margin: 0,
+      fontSize: Math.round(fontSize * 1.2),
+      fontFamily: headingFontFamily,
+      fontWeight: 700,
+      lineHeight: 1.3,
+      wordBreak: "break-word",
+      overflowWrap: "break-word",
+    };
     return (
-      <div style={{ padding: "28px 16px 8px" }}>
-        <h2 style={{
-          fontSize: Math.round(fontSize * 1.22),
-          fontFamily: headingFontFamily,
-          fontWeight: 700,
-          color: colors.heading,
-          margin: 0,
-          lineHeight: 1.3,
-        }}>
-          {text}
-        </h2>
-        {showTranslation && paragraph.translatedText && (
-          <p style={{
-            fontSize: Math.round(fontSize * 1.1),
-            fontFamily: headingFontFamily,
-            fontWeight: 600,
-            color: colors.accent,
-            margin: "6px 0 0",
-            lineHeight: 1.3,
-          }}>
-            {paragraph.translatedText}
-          </p>
+      <div style={{ display: "flex", width: "100%", borderBottom: `2px solid ${colors.border}` }}>
+        <div style={cellStyle("en")}>
+          <h2 style={{ ...headStyle, color: colors.heading }}>{text}</h2>
+        </div>
+        {showTranslation && (
+          <>
+            <div style={{ width: 1, flexShrink: 0, background: colors.border }} />
+            <div style={cellStyle("ru")}>
+              <h2 style={{ ...headStyle, color: colors.accent }}>
+                {paragraph.translatedText || "…"}
+              </h2>
+            </div>
+          </>
         )}
-        <div style={{ height: 1, background: colors.border, marginTop: 10 }} />
       </div>
     );
   }
 
-  // ── Normal paragraph ─────────────────────────────────────────────────────
+  // ── Normal paragraph ───────────────────────────────────────────────────────
   return (
-    <div style={{ padding: "0 16px 18px" }}>
-      {/* English */}
-      <p style={{
-        fontSize,
-        lineHeight,
-        fontFamily,
-        color: colors.text,
-        margin: 0,
-        hyphens: "auto",
-        wordBreak: "break-word",
-      }}>
-        {tokens.map(({ token, isWord }, i) => {
-          if (!isWord) return <span key={i}>{token}</span>;
-          const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
-          return (
-            <span
-              key={i}
-              onClick={e => { e.stopPropagation(); handleWordTap(clean); }}
-              style={{ cursor: "pointer" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
-              {token}
-            </span>
-          );
-        })}
-      </p>
-
-      {/* Russian — shown only when translation is on */}
+    <div style={{ display: "flex", width: "100%", borderBottom: `1px solid ${colors.border}` }}>
+      <div style={cellStyle("en")}>{enText}</div>
       {showTranslation && (
-        <div style={{ marginTop: 8 }}>
-          {paragraph.isTranslated && paragraph.translatedText ? (
-            <p style={{
-              fontSize: Math.max(12, fontSize - 1),
-              lineHeight,
-              fontFamily,
-              color: colors.muted,
-              margin: 0,
-              fontStyle: "italic",
-              hyphens: "auto",
-              wordBreak: "break-word",
-              paddingLeft: 10,
-              borderLeft: `2px solid ${colors.border}`,
-            }}>
-              {paragraph.translatedText}
-            </p>
-          ) : (
-            <p style={{
-              fontSize: 11,
-              color: colors.border,
-              margin: 0,
-              paddingLeft: 10,
-              borderLeft: `2px solid ${colors.border}`,
-              fontStyle: "italic",
-            }}>
-              перевод…
-            </p>
-          )}
-        </div>
+        <>
+          <div style={{ width: 1, flexShrink: 0, background: colors.border }} />
+          <div style={cellStyle("ru")}>{ruText}</div>
+        </>
       )}
     </div>
   );

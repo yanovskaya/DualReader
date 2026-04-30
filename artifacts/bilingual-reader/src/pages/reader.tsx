@@ -322,7 +322,7 @@ export default function ReaderPage() {
     );
   }
 
-  const HEADER_H = 84; // px — two-row header (50 nav + 34 progress/toggle)
+  const HEADER_H = 82; // px — two-row header (50 nav + 32 labels/toggle)
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text }}>
@@ -360,28 +360,51 @@ export default function ReaderPage() {
           </button>
         </div>
 
-        {/* Row 2: progress bar + RU toggle */}
-        <div style={{ height: 34, borderTop: `1px solid ${colors.border}`, display: "flex", alignItems: "center", padding: "0 16px", gap: 10, position: "relative" }}>
-          {/* Progress bar at bottom of row */}
+        {/* Row 2: column labels + toggle */}
+        <div style={{ height: 32, borderTop: `1px solid ${colors.border}`, display: "flex", position: "relative" }}>
+          {/* Progress bar */}
           <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: colors.border }}>
             <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
           </div>
-          <span style={{ fontSize: 11, color: colors.muted, flex: 1 }}>Перевод</span>
-          <button
-            onClick={() => setShowTranslations(v => !v)}
-            style={{
-              display: "flex", alignItems: "center", gap: 5,
-              padding: "3px 10px", borderRadius: 12,
-              border: `1.5px solid ${showTranslations ? colors.accent : colors.border}`,
-              background: showTranslations ? colors.accent + "18" : "transparent",
-              color: showTranslations ? colors.accent : colors.muted,
-              fontSize: 12, fontWeight: 600, cursor: "pointer",
-              transition: "all 0.15s",
-            }}
-          >
-            <span style={{ fontSize: 14 }}>{showTranslations ? "▾" : "▸"}</span>
-            {showTranslations ? "Скрыть" : "Показать"}
-          </button>
+
+          {/* EN label — takes same 50% as the EN column below */}
+          <div style={{
+            width: showTranslations ? "50%" : "100%",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "width 0.2s",
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.muted }}>EN</span>
+          </div>
+
+          {showTranslations && (
+            <>
+              <div style={{ width: 1, background: colors.border }} />
+              {/* RU label with hide button */}
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 8, paddingRight: 8 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.accent }}>RU</span>
+                <button
+                  onClick={() => setShowTranslations(false)}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", color: colors.muted, fontSize: 12, padding: "2px 4px", lineHeight: 1 }}
+                  title="Скрыть перевод"
+                >✕</button>
+              </div>
+            </>
+          )}
+
+          {!showTranslations && (
+            <button
+              onClick={() => setShowTranslations(true)}
+              style={{
+                position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                padding: "2px 8px", borderRadius: 10,
+                border: `1px solid ${colors.border}`,
+                background: "transparent", color: colors.muted,
+                fontSize: 11, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              RU ▸
+            </button>
+          )}
         </div>
       </header>
 
