@@ -130,17 +130,6 @@ export function TocDrawer({ chapters, colors, fontSize, onNavigate, onClose, rea
                     }}>
                       {ch.originalText}
                     </p>
-                    {/* RU title */}
-                    {ch.translatedText && (
-                      <p style={{
-                        margin: "2px 0 0", fontSize: fontSize - 2,
-                        color: colors.muted, fontStyle: "italic", lineHeight: 1.3,
-                        wordBreak: "break-word",
-                        opacity: isDone ? 0.5 : 0.85,
-                      }}>
-                        {ch.translatedText}
-                      </p>
-                    )}
                     {/* Chapter progress bar (only for current and recent) */}
                     {(isCurrent || (chPct > 0 && chPct < 1)) && (
                       <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 7 }}>

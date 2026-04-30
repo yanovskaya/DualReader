@@ -107,7 +107,21 @@ export function BookParagraph({
           color: colors.heading,
           wordBreak: "break-word",
         }}>
-          {text}
+          {tokens.map(({ token, isWord }, i) => {
+            if (!isWord) return <span key={i}>{token}</span>;
+            const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
+            return (
+              <span
+                key={i}
+                onClick={e => { e.stopPropagation(); handleWordTap(clean); }}
+                style={{ cursor: "pointer", borderRadius: 2 }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                {token}
+              </span>
+            );
+          })}
         </h2>
       </div>
     );
