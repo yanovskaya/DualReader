@@ -46,7 +46,7 @@ function timeLeft(remaining: number) {
 function WordDict({ word, context, colors }: { word: string; context: string; colors: ThemeColors }) {
   const clean = word.toLowerCase().replace(/[^\w-]/g, "");
   const { data: entry, isLoading, isError } = useLookupWord(
-    { params: { word: clean, context } },
+    { word: clean, context },
     { query: { enabled: !!clean, queryKey: getLookupWordQueryKey({ word: clean, context }) } }
   );
   if (isLoading) return (
