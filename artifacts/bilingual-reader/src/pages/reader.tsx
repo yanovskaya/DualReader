@@ -239,26 +239,42 @@ type PanelState =
 function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: ThemeColors; onClose: () => void }) {
   if (panel.kind === "hidden") return null;
   return (
-    <div style={{
-      position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
-      background: colors.drawerBg, borderRadius: "18px 18px 0 0",
-      boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
-      padding: "0 20px 44px", maxHeight: "55vh", overflowY: "auto",
-      animation: "slideUp 0.22s ease",
-    }}>
-      <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 4 }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: colors.border }} />
+    <>
+      {/* Backdrop — tap anywhere outside to close */}
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", inset: 0, zIndex: 39, background: "rgba(0,0,0,0.35)" }}
+      />
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
+        background: colors.drawerBg, borderRadius: "18px 18px 0 0",
+        boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
+        padding: "0 20px 44px", maxHeight: "55vh", overflowY: "auto",
+        animation: "slideUp 0.22s ease",
+      }}>
+        <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 4 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: colors.border }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12 }}>
+          {panel.kind === "dict" && (
+            <span style={{ fontSize: 12, color: colors.muted, fontStyle: "italic" }}>
+              «{panel.word}»
+            </span>
+          )}
+          <button
+            onClick={onClose}
+            aria-label="Закрыть словарь"
+            style={{ marginLeft: "auto", background: "transparent", border: "none", cursor: "pointer", color: colors.muted, padding: "4px 2px", display: "flex" }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        {panel.kind === "dict" && (
+          <WordDict word={panel.word} context={panel.paragraph.originalText} colors={colors} />
+        )}
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: 12 }}>
-        <button onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
-          <X size={16} />
-        </button>
-      </div>
-      {panel.kind === "dict" && (
-        <WordDict word={panel.word} context={panel.paragraph.originalText} colors={colors} />
-      )}
-    </div>
+    </>
   );
 }
 
@@ -399,24 +415,26 @@ export default function ReaderPage() {
     fetch(`/api/books/${bookId}/translate`, { method: "POST" }).catch(() => {});
   }, [statusData?.status, bookId]);
 
-  // Restore scroll position once enough paragraphs are loaded
+  // Restore scroll position once enough paragraphs are loaded, then focus EN panel for keyboard scrolling
   useEffect(() => {
-    if (pendingRestoreRatio.current === null) return;
     if (allParagraphs.length === 0) return;
-    // Wait a tick for DOM to paint
     const timer = setTimeout(() => {
       const en = enRef.current;
       if (!en) return;
-      const scrollable = en.scrollHeight - en.clientHeight;
-      if (scrollable <= 0) return;
-      en.scrollTop = pendingRestoreRatio.current! * scrollable;
-      // Also sync RU panel
-      const ru = ruRef.current;
-      if (ru) {
-        const ruScrollable = ru.scrollHeight - ru.clientHeight;
-        ru.scrollTop = pendingRestoreRatio.current! * ruScrollable;
+      if (pendingRestoreRatio.current !== null) {
+        const scrollable = en.scrollHeight - en.clientHeight;
+        if (scrollable > 0) {
+          en.scrollTop = pendingRestoreRatio.current! * scrollable;
+          const ru = ruRef.current;
+          if (ru) {
+            const ruScrollable = ru.scrollHeight - ru.clientHeight;
+            ru.scrollTop = pendingRestoreRatio.current! * ruScrollable;
+          }
+        }
+        pendingRestoreRatio.current = null;
       }
-      pendingRestoreRatio.current = null;
+      // Auto-focus so keyboard scrolling works immediately
+      en.focus({ preventScroll: true });
     }, 120);
     return () => clearTimeout(timer);
   }, [allParagraphs]);
@@ -708,11 +726,13 @@ export default function ReaderPage() {
         <div
           ref={enRef}
           onScroll={handleEnScroll}
+          tabIndex={0}
           style={{
             flex: 3,
             overflowY: "auto",
             overflowX: "hidden",
             WebkitOverflowScrolling: "touch" as never,
+            outline: "none",
           }}
           onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
         >
