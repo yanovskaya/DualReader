@@ -40,23 +40,29 @@ router.get("/dictionary/lookup", async (req, res) => {
       });
     }
 
-    // Look up via OpenAI
+    // Look up via OpenAI — context-aware translation
     const prompt = context
-      ? `Look up the English word "${word}" used in the following context: "${context}"\n\nProvide a translation to Russian with part of speech and 1-2 usage examples in English.`
-      : `Look up the English word "${word}"\n\nProvide a translation to Russian with part of speech and 1-2 usage examples in English.`;
+      ? `Translate the English word "${word}" as it is used in this sentence:\n"${context}"\n\nGive the Russian translation that fits this exact context and meaning.`
+      : `Translate the English word "${word}" to Russian.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4.1-nano",
-      max_completion_tokens: 512,
+      max_completion_tokens: 300,
       messages: [
         {
           role: "system",
-          content: `You are an English-Russian dictionary. For each word lookup, respond ONLY with JSON in this exact format:
+          content: `You are an English-Russian dictionary assistant. Respond ONLY with a JSON object in this exact format, no extra text:
 {
-  "translations": ["primary_translation", "alternative_translation"],
+  "translations": ["перевод1", "перевод2"],
   "partOfSpeech": "noun|verb|adjective|adverb|preposition|conjunction|pronoun|interjection",
-  "examples": ["English example sentence 1", "English example sentence 2"]
-}`,
+  "examples": ["Short English example 1.", "Short English example 2."]
+}
+
+Rules:
+- translations must be Russian words/phrases that match the word's meaning IN THE GIVEN CONTEXT
+- give 1-3 translations, most contextually appropriate first
+- examples must be short English sentences showing natural usage
+- NEVER mix up the target word with another word`,
         },
         { role: "user", content: prompt },
       ],
