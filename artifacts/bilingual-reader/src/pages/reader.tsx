@@ -216,7 +216,9 @@ export default function ReaderPage() {
   // Two synced scroll panels — EN on top, RU on bottom
   const enRef = useRef<HTMLDivElement>(null);
   const ruRef = useRef<HTMLDivElement>(null);
-  const isSyncing = useRef(false);
+  // Track which panel is the source of a sync to avoid ping-pong
+  const syncSource = useRef<"en" | "ru" | null>(null);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollPct, setScrollPct] = useState(0);
 
   // Sentinel div at the bottom of the EN panel to trigger next batch load
@@ -272,33 +274,42 @@ export default function ReaderPage() {
     return () => observer.disconnect();
   }, [totalBatches]);
 
-  // Sync scroll between EN and RU panels
-  const handleEnScroll = useCallback(() => {
-    const en = enRef.current;
-    const ru = ruRef.current;
-    if (!en) return;
-    const scrollable = en.scrollHeight - en.clientHeight;
-    setScrollPct(scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0);
-    if (!ru || isSyncing.current) return;
-    isSyncing.current = true;
-    const ratio = scrollable > 0 ? en.scrollTop / scrollable : 0;
-    const ruScrollable = ru.scrollHeight - ru.clientHeight;
-    ru.scrollTop = ratio * ruScrollable;
-    requestAnimationFrame(() => { isSyncing.current = false; });
+  // Sync scroll between EN and RU panels without ping-pong
+  const clearSyncTimer = useCallback(() => {
+    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
   }, []);
 
-  const handleRuScroll = useCallback(() => {
+  const handleEnScroll = useCallback(() => {
     const en = enRef.current;
+    if (!en) return;
+    // Update progress bar regardless
+    const scrollable = en.scrollHeight - en.clientHeight;
+    setScrollPct(scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0);
+    // Only propagate if EN is the active source (or no source yet)
+    if (syncSource.current === "ru") return;
     const ru = ruRef.current;
-    if (!ru || !en || isSyncing.current) return;
-    isSyncing.current = true;
+    if (!ru) return;
+    syncSource.current = "en";
+    clearSyncTimer();
+    const ratio = scrollable > 0 ? en.scrollTop / scrollable : 0;
+    ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
+  }, [clearSyncTimer]);
+
+  const handleRuScroll = useCallback(() => {
+    // Only propagate if RU is the active source (or no source yet)
+    if (syncSource.current === "en") return;
+    const ru = ruRef.current;
+    const en = enRef.current;
+    if (!ru || !en) return;
+    syncSource.current = "ru";
+    clearSyncTimer();
     const ruScrollable = ru.scrollHeight - ru.clientHeight;
     const ratio = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
-    const enScrollable = en.scrollHeight - en.clientHeight;
-    en.scrollTop = ratio * enScrollable;
+    en.scrollTop = ratio * (en.scrollHeight - en.clientHeight);
     setScrollPct(ratio);
-    requestAnimationFrame(() => { isSyncing.current = false; });
-  }, []);
+    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
+  }, [clearSyncTimer]);
 
   // Sync theme to body background
   useEffect(() => {
