@@ -587,19 +587,22 @@ export default function ReaderPage() {
     setShowSettings(false);
   }, []);
 
-  // Single tap on an EN word → scroll RU to the matching paragraph and anchor offset
+  // Single tap on an EN word → scroll RU to the matching paragraph and reset offset
   const handleWordClick = useCallback((p: Paragraph) => {
     const ru = ruRef.current;
-    const en = enRef.current;
-    if (!ru || !en) return;
+    if (!ru) return;
     const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
     if (!ruPara) return;
     // Bring the RU paragraph to the top of the RU panel
     const delta = ruPara.getBoundingClientRect().top - ru.getBoundingClientRect().top;
+    clearSyncTimer();
+    syncSource.current = "en"; // prevent handleRuScroll from clobbering the offset
     ru.scrollTop += delta;
-    // Persist as manual offset so EN scroll continues from here
-    ruManualOffset.current = ru.scrollTop - paragraphRuPos(en, ru);
-  }, []);
+    // Reset manual offset: after a deliberate tap, EN→RU sync should
+    // resume paragraph-aligned with no extra drift
+    ruManualOffset.current = 0;
+    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
+  }, [clearSyncTimer]);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
 
