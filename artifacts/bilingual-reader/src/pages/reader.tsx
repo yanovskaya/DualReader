@@ -324,46 +324,13 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   );
 }
 
-// Scroll the RU panel so the paragraph that overlaps the EN viewport top appears
-// at the top of RU.  Uses only getBoundingClientRect — no offsetTop, no
-// position:relative requirement, works on all mobile browsers.
-function syncRuToEn(en: HTMLElement, ru: HTMLElement) {
-  const enTop = en.getBoundingClientRect().top;
-  const ruTop = ru.getBoundingClientRect().top;
-  for (const el of en.querySelectorAll<HTMLElement>("[id^='para-']")) {
-    if (el.getBoundingClientRect().bottom > enTop) {
-      const paraId = el.id.replace("para-", "");
-      const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
-      if (ruPara) {
-        // Shift RU scroll so ruPara.top lands exactly at the RU container top
-        ru.scrollTop += ruPara.getBoundingClientRect().top - ruTop;
-        return;
-      }
-      break;
-    }
-  }
-  // Fallback: proportional ratio
-  const s = en.scrollHeight - en.clientHeight;
-  ru.scrollTop = (s > 0 ? en.scrollTop / s : 0) * (ru.scrollHeight - ru.clientHeight);
-}
-
-// Scroll EN so the paragraph visible at the top of RU appears at the top of EN.
-function syncEnToRu(ru: HTMLElement, en: HTMLElement) {
-  const ruTop = ru.getBoundingClientRect().top;
-  const enTop = en.getBoundingClientRect().top;
-  for (const el of ru.querySelectorAll<HTMLElement>("[data-ru-para]")) {
-    if (el.getBoundingClientRect().bottom > ruTop) {
-      const paraId = el.getAttribute("data-ru-para");
-      const enPara = paraId ? en.querySelector<HTMLElement>(`#para-${paraId}`) : null;
-      if (enPara) {
-        en.scrollTop += enPara.getBoundingClientRect().top - enTop;
-        return;
-      }
-      break;
-    }
-  }
-  const s = ru.scrollHeight - ru.clientHeight;
-  en.scrollTop = (s > 0 ? ru.scrollTop / s : 0) * (en.scrollHeight - en.clientHeight);
+// Returns the RU scroll position that corresponds to EN's current scroll,
+// using a simple proportional ratio.  The caller adds the manual offset on top.
+function proportionalRuPos(en: HTMLElement, ru: HTMLElement): number {
+  const enS = en.scrollHeight - en.clientHeight;
+  const ruS = ru.scrollHeight - ru.clientHeight;
+  const ratio = enS > 0 ? en.scrollTop / enS : 0;
+  return ratio * ruS;
 }
 
 // ── Main Reader ────────────────────────────────────────────────────────────────
@@ -404,6 +371,9 @@ export default function ReaderPage() {
   // Track which panel is the source of a sync to avoid ping-pong
   const syncSource = useRef<"en" | "ru" | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Persistent manual offset: how many px the user has nudged RU away from the
+  // proportional position.  Survives across EN scroll events.
+  const ruManualOffset = useRef(0);
   const [scrollPct, setScrollPct] = useState(0);
 
   // Sentinel div at the bottom of the EN panel to trigger next batch load
@@ -506,7 +476,10 @@ export default function ReaderPage() {
         if (scrollable > 0) {
           en.scrollTop = pendingRestoreRatio.current! * scrollable;
           const ru = ruRef.current;
-          if (ru) syncRuToEn(en, ru);
+          if (ru) {
+            const ruS = ru.scrollHeight - ru.clientHeight;
+            ru.scrollTop = Math.max(0, Math.min(ruS, proportionalRuPos(en, ru)));
+          }
         }
         pendingRestoreRatio.current = null;
       }
@@ -523,7 +496,8 @@ export default function ReaderPage() {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      syncRuToEn(en, ru);
+      const ruS = ru.scrollHeight - ru.clientHeight;
+      ru.scrollTop = Math.max(0, Math.min(ruS, proportionalRuPos(en, ru) + ruManualOffset.current));
     }, 50); // wait for panel to mount + render
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -565,29 +539,28 @@ export default function ReaderPage() {
     const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
     setScrollPct(ratio);
     saveProgressDebounced(ratio);
-    // Only propagate if EN is the active source (or no source yet)
+    // Don't propagate if RU is currently being scrolled by the user
     if (syncSource.current === "ru") return;
     const ru = ruRef.current;
     if (!ru) return;
     syncSource.current = "en";
     clearSyncTimer();
-    syncRuToEn(en, ru);
+    // Proportional position + whatever manual offset the user has set
+    const target = proportionalRuPos(en, ru) + ruManualOffset.current;
+    const ruS = ru.scrollHeight - ru.clientHeight;
+    ru.scrollTop = Math.max(0, Math.min(ruS, target));
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
   }, [clearSyncTimer, saveProgressDebounced]);
 
   const handleRuScroll = useCallback(() => {
+    // Ignore scroll events that we triggered ourselves from EN handler
     if (syncSource.current === "en") return;
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    syncSource.current = "ru";
-    clearSyncTimer();
-    syncEnToRu(ru, en);
-    // Update progress bar from EN position
-    const enScrollable = en.scrollHeight - en.clientHeight;
-    setScrollPct(enScrollable > 0 ? Math.min(1, en.scrollTop / enScrollable) : 0);
-    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
-  }, [clearSyncTimer]);
+    // User manually nudged RU — record new offset so future EN scrolls preserve it
+    ruManualOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+  }, []);
 
   // Sync theme to body background
   useEffect(() => {
