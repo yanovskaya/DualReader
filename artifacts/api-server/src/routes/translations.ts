@@ -85,7 +85,7 @@ router.post("/books/:id/translate", async (req, res) => {
       const textsToTranslate = batch.map((p, idx) => `[${idx + 1}] ${p.originalText}`).join("\n\n");
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: "gpt-4.1-mini",
         max_completion_tokens: 8192,
         messages: [
           {

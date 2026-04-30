@@ -46,7 +46,7 @@ router.get("/dictionary/lookup", async (req, res) => {
       : `Look up the English word "${word}"\n\nProvide a translation to Russian with part of speech and 1-2 usage examples in English.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5-nano",
+      model: "gpt-4.1-nano",
       max_completion_tokens: 512,
       messages: [
         {
