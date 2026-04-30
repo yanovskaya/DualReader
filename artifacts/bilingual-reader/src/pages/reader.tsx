@@ -324,13 +324,27 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   );
 }
 
-// Returns the RU scroll position that corresponds to EN's current scroll,
-// using a simple proportional ratio.  The caller adds the manual offset on top.
-function proportionalRuPos(en: HTMLElement, ru: HTMLElement): number {
+// Returns the ru.scrollTop value that would put the RU paragraph matching the
+// first visible EN paragraph at the very top of the RU panel.
+// Falls back to proportional ratio when no paragraph match is found.
+// Uses only getBoundingClientRect — no offsetTop / position:relative dependency.
+function paragraphRuPos(en: HTMLElement, ru: HTMLElement): number {
+  const enTopEdge = en.getBoundingClientRect().top;
+  const ruTopEdge = ru.getBoundingClientRect().top;
+  for (const el of en.querySelectorAll<HTMLElement>("[id^='para-']")) {
+    if (el.getBoundingClientRect().bottom > enTopEdge) {
+      const paraId = el.id.replace("para-", "");
+      const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
+      if (ruPara) {
+        return ru.scrollTop + ruPara.getBoundingClientRect().top - ruTopEdge;
+      }
+      break;
+    }
+  }
+  // Fallback: proportional ratio
   const enS = en.scrollHeight - en.clientHeight;
   const ruS = ru.scrollHeight - ru.clientHeight;
-  const ratio = enS > 0 ? en.scrollTop / enS : 0;
-  return ratio * ruS;
+  return (enS > 0 ? en.scrollTop / enS : 0) * ruS;
 }
 
 // ── Main Reader ────────────────────────────────────────────────────────────────
@@ -478,7 +492,7 @@ export default function ReaderPage() {
           const ru = ruRef.current;
           if (ru) {
             const ruS = ru.scrollHeight - ru.clientHeight;
-            ru.scrollTop = Math.max(0, Math.min(ruS, proportionalRuPos(en, ru)));
+            ru.scrollTop = Math.max(0, Math.min(ruS, paragraphRuPos(en, ru)));
           }
         }
         pendingRestoreRatio.current = null;
@@ -497,7 +511,7 @@ export default function ReaderPage() {
       const ru = ruRef.current;
       if (!en || !ru) return;
       const ruS = ru.scrollHeight - ru.clientHeight;
-      ru.scrollTop = Math.max(0, Math.min(ruS, proportionalRuPos(en, ru) + ruManualOffset.current));
+      ru.scrollTop = Math.max(0, Math.min(ruS, paragraphRuPos(en, ru) + ruManualOffset.current));
     }, 50); // wait for panel to mount + render
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -546,7 +560,7 @@ export default function ReaderPage() {
     syncSource.current = "en";
     clearSyncTimer();
     // Proportional position + whatever manual offset the user has set
-    const target = proportionalRuPos(en, ru) + ruManualOffset.current;
+    const target = paragraphRuPos(en, ru) + ruManualOffset.current;
     const ruS = ru.scrollHeight - ru.clientHeight;
     ru.scrollTop = Math.max(0, Math.min(ruS, target));
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
@@ -559,7 +573,7 @@ export default function ReaderPage() {
     const en = enRef.current;
     if (!ru || !en) return;
     // User manually nudged RU — record new offset so future EN scrolls preserve it
-    ruManualOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+    ruManualOffset.current = ru.scrollTop - paragraphRuPos(en, ru);
   }, []);
 
   // Sync theme to body background
@@ -584,7 +598,7 @@ export default function ReaderPage() {
     const delta = ruPara.getBoundingClientRect().top - ru.getBoundingClientRect().top;
     ru.scrollTop += delta;
     // Persist as manual offset so EN scroll continues from here
-    ruManualOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+    ruManualOffset.current = ru.scrollTop - paragraphRuPos(en, ru);
   }, []);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
