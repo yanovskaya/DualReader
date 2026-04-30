@@ -3,7 +3,7 @@ import { useListBooks, getListBooksQueryKey } from "@workspace/api-client-react"
 import { Layout } from "@/components/layout";
 import { BookCard } from "@/components/book-card";
 import { Button } from "@/components/ui/button";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Plus, BookOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLastBook } from "@/hooks/use-reading-progress";
@@ -13,25 +13,27 @@ export default function Home() {
     query: { queryKey: getListBooksQueryKey() }
   });
   const [, navigate] = useLocation();
+  const search = useSearch(); // e.g. "back=1" when coming from reader
 
-  // Auto-navigate: last opened book, or the only book if there's just one
+  // Auto-navigate only on fresh app open (not when user pressed ← from reader)
+  const cameFromReader = search.includes("back=1");
+
   useEffect(() => {
+    if (cameFromReader) return;        // user deliberately went to library
     if (isLoading || !books) return;
     if (books.length === 0) return;
 
     const lastId = getLastBook();
 
-    // If there's a saved last book and it still exists → go there
     if (lastId && books.some(b => b.id === lastId)) {
       navigate(`/reader/${lastId}`);
       return;
     }
 
-    // If there's only one book → open it directly
     if (books.length === 1) {
       navigate(`/reader/${books[0].id}`);
     }
-  }, [isLoading, books, navigate]);
+  }, [isLoading, books, navigate, cameFromReader]);
 
   return (
     <Layout>

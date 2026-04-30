@@ -13,7 +13,7 @@ import {
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { TocDrawer } from "@/components/toc-drawer";
 import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
@@ -282,6 +282,7 @@ export default function ReaderPage() {
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
   // Global toggle: show or hide Russian translations
   const [showTranslations, setShowTranslations] = useState(true);
   // Chapter navigation: id of paragraph we want to scroll to after load
@@ -564,23 +565,37 @@ export default function ReaderPage() {
     );
   }
 
-  const HEADER_H = 53; // px — header (50 nav + 3 progress bar)
+  const NAV_H = 50;    // px nav row
+  const PROG_H = 3;    // px progress bar
+  const HEADER_H = NAV_H + PROG_H; // 53 total
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes headerReveal{from{transform:translateY(-${NAV_H}px)}to{transform:translateY(0)}}
+      `}</style>
 
-      {/* ── Fixed header ─────────────────────────────────────────────── */}
+      {/* ── Always-visible progress bar (top: 0) ─────────────────────── */}
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 32,
+        height: PROG_H, background: colors.border,
+      }}>
+        <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
+      </div>
+
+      {/* ── Nav header — slides away when showHeader=false ───────────── */}
       <header style={{
-        position: "fixed", top: 0, left: 0, right: 0, zIndex: 30,
+        position: "fixed", top: PROG_H, left: 0, right: 0, zIndex: 30,
         background: colors.headerBg,
         borderBottom: `1px solid ${colors.border}`,
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
+        transform: showHeader ? "translateY(0)" : `translateY(-${NAV_H}px)`,
+        transition: "transform 0.25s ease",
       }}>
-        {/* Row 1: nav */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 10px", height: 50 }}>
-          <Link href="/">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 10px", height: NAV_H }}>
+          <Link href="/?back=1">
             <button style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
               <ArrowLeft size={17} />
             </button>
@@ -603,16 +618,30 @@ export default function ReaderPage() {
           <button onClick={() => { setShowSettings(s => !s); setShowToc(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Settings2 size={17} />
           </button>
-        </div>
-
-        {/* Row 2: progress bar */}
-        <div style={{ height: 3, background: colors.border }}>
-          <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
+          {/* Hide header button */}
+          <button
+            onClick={() => setShowHeader(false)}
+            title="Скрыть панель"
+            style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}
+          >
+            <EyeOff size={15} />
+          </button>
         </div>
       </header>
 
+      {/* ── Tap zone to restore header when hidden ───────────────────── */}
+      {!showHeader && (
+        <div
+          onClick={() => setShowHeader(true)}
+          style={{
+            position: "fixed", top: PROG_H, left: 0, right: 0, height: 32,
+            zIndex: 29, cursor: "pointer",
+          }}
+        />
+      )}
+
       {/* ── Two synced scroll panels ──────────────────────────────────── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: HEADER_H }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: showHeader ? HEADER_H : PROG_H, transition: "padding-top 0.25s ease" }}>
 
         {/* EN panel — takes 3/4 of space when RU is visible */}
         <div
