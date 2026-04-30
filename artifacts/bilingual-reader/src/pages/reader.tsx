@@ -573,6 +573,20 @@ export default function ReaderPage() {
     setShowSettings(false);
   }, []);
 
+  // Single tap on an EN word → scroll RU to the matching paragraph and anchor offset
+  const handleWordClick = useCallback((p: Paragraph) => {
+    const ru = ruRef.current;
+    const en = enRef.current;
+    if (!ru || !en) return;
+    const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
+    if (!ruPara) return;
+    // Bring the RU paragraph to the top of the RU panel
+    const delta = ruPara.getBoundingClientRect().top - ru.getBoundingClientRect().top;
+    ru.scrollTop += delta;
+    // Persist as manual offset so EN scroll continues from here
+    ruManualOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+  }, []);
+
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
 
   const bodyFont = FONT_FAMILIES[settings.fontFamily].css;
@@ -730,6 +744,7 @@ export default function ReaderPage() {
               <BookParagraph
                 paragraph={p}
                 mode="en"
+                onWordClick={handleWordClick}
                 onWordDoubleClick={handleWordDoubleClick}
                 colors={colors}
                 fontSize={settings.fontSize}

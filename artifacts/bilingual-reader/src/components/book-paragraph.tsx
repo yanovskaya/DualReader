@@ -7,6 +7,7 @@ export interface BookParagraphProps {
   paragraph: Paragraph;
   /** "en" = only English text (clickable words), "ru" = only Russian translation */
   mode: "en" | "ru";
+  onWordClick?: (p: Paragraph) => void;
   onWordDoubleClick?: (word: string, p: Paragraph) => void;
   colors: ThemeColors;
   fontSize: number;
@@ -19,6 +20,7 @@ export interface BookParagraphProps {
 export function BookParagraph({
   paragraph,
   mode,
+  onWordClick,
   onWordDoubleClick,
   colors,
   fontSize,
@@ -88,14 +90,17 @@ export function BookParagraph({
     (word: string) => {
       clickCount.current += 1;
       if (clickCount.current === 1) {
-        clickTimer.current = setTimeout(() => { clickCount.current = 0; }, 280);
+        clickTimer.current = setTimeout(() => {
+          clickCount.current = 0;
+          onWordClick?.(paragraph);          // single-tap confirmed
+        }, 280);
       } else {
         if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
         clickCount.current = 0;
         onWordDoubleClick?.(word, paragraph);
       }
     },
-    [paragraph, onWordDoubleClick]
+    [paragraph, onWordClick, onWordDoubleClick]
   );
 
   if (isHeading) {
