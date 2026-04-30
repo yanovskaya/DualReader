@@ -1,7 +1,7 @@
 import { useRef, useCallback } from "react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
 import { isHeadingParagraph } from "@/lib/sentences";
-import type { ThemeColors } from "@/hooks/use-reader-settings";
+import type { TextAlign, ThemeColors } from "@/hooks/use-reader-settings";
 
 export interface BookParagraphProps {
   paragraph: Paragraph;
@@ -13,6 +13,7 @@ export interface BookParagraphProps {
   fontFamily: string;
   headingFontFamily: string;
   lineHeight: string;
+  textAlign?: TextAlign;
 }
 
 export function BookParagraph({
@@ -24,6 +25,7 @@ export function BookParagraph({
   fontFamily,
   headingFontFamily,
   lineHeight,
+  textAlign = "left",
 }: BookParagraphProps) {
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clickCount = useRef(0);
@@ -64,6 +66,7 @@ export function BookParagraph({
             fontStyle: "italic",
             wordBreak: "break-word",
             overflowWrap: "break-word",
+            textAlign,
           }}>
             {ruContent}
           </p>
@@ -134,6 +137,7 @@ export function BookParagraph({
         color: colors.text,
         wordBreak: "break-word",
         overflowWrap: "break-word",
+        textAlign,
       }}>
         {tokens.map(({ token, isWord }, i) => {
           if (!isWord) return <span key={i}>{token}</span>;

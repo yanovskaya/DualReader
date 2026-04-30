@@ -30,6 +30,7 @@ import {
   type FontFamily,
   type LineSpacing,
   type Margin,
+  type TextAlign,
   type ThemeColors,
 } from "@/hooks/use-reader-settings";
 
@@ -117,7 +118,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
 }
 
 // ── Settings bottom sheet ──────────────────────────────────────────────────────
-function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin }: {
+function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign }: {
   colors: ThemeColors;
   settings: ReturnType<typeof useReaderSettings>["settings"];
   onClose: () => void;
@@ -126,6 +127,7 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
   setFontFamily: (v: FontFamily) => void;
   setLineSpacing: (v: LineSpacing) => void;
   setMargin: (v: Margin) => void;
+  setTextAlign: (v: TextAlign) => void;
 }) {
   const row = { display: "flex", flexDirection: "column" as const, gap: 8, marginBottom: 20 };
   const label = { fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: colors.muted, marginBottom: 4 };
@@ -183,6 +185,30 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
                 {LINE_SPACINGS[ls].label}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div style={row}>
+          <div style={label}>Выравнивание текста</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setTextAlign("left")} style={{ ...chip(settings.textAlign === "left"), display: "flex", alignItems: "center", gap: 6 }}>
+              {/* Left-align icon */}
+              <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
+                <rect x="0" y="0" width="14" height="2" rx="1"/>
+                <rect x="0" y="5" width="10" height="2" rx="1"/>
+                <rect x="0" y="10" width="12" height="2" rx="1"/>
+              </svg>
+              По левому краю
+            </button>
+            <button onClick={() => setTextAlign("justify")} style={{ ...chip(settings.textAlign === "justify"), display: "flex", alignItems: "center", gap: 6 }}>
+              {/* Justify icon */}
+              <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
+                <rect x="0" y="0" width="14" height="2" rx="1"/>
+                <rect x="0" y="5" width="14" height="2" rx="1"/>
+                <rect x="0" y="10" width="14" height="2" rx="1"/>
+              </svg>
+              По ширине
+            </button>
           </div>
         </div>
 
@@ -290,7 +316,7 @@ export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
   const bookId = parseInt(id || "0", 10);
 
-  const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin } = useReaderSettings();
+  const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign } = useReaderSettings();
   const colors = THEMES[settings.theme];
 
   // Load saved reading progress for this book (before first render)
@@ -752,6 +778,7 @@ export default function ReaderPage() {
                 fontFamily={bodyFont}
                 headingFontFamily={headingFont}
                 lineHeight={lineHeight}
+                textAlign={settings.textAlign}
               />
             </div>
           ))}
@@ -817,6 +844,7 @@ export default function ReaderPage() {
                     fontFamily={bodyFont}
                     headingFontFamily={headingFont}
                     lineHeight={lineHeight}
+                    textAlign={settings.textAlign}
                   />
                 </div>
               ))}
@@ -877,6 +905,7 @@ export default function ReaderPage() {
           setFontFamily={setFontFamily}
           setLineSpacing={setLineSpacing}
           setMargin={setMargin}
+          setTextAlign={setTextAlign}
         />
       )}
 

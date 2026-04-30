@@ -15,6 +15,7 @@ export type Theme =
 export type FontFamily = "serif" | "sans" | "mono";
 export type LineSpacing = "compact" | "normal" | "relaxed";
 export type Margin = "narrow" | "normal" | "wide";
+export type TextAlign = "left" | "justify";
 
 export interface ReaderSettings {
   theme: Theme;
@@ -22,6 +23,7 @@ export interface ReaderSettings {
   fontFamily: FontFamily;
   lineSpacing: LineSpacing;
   margin: Margin;
+  textAlign: TextAlign;
 }
 
 export interface ThemeColors {
@@ -155,11 +157,11 @@ export const THEMES: Record<Theme, ThemeColors> = {
     bg: "#1e2432",
     drawerBg: "#161c28",
     headerBg: "rgba(30,36,50,0.97)",
-    border: "rgba(255,255,255,0.08)",
-    text: "#d0d8f0",
-    muted: "#8898bb",
-    heading: "#e8eef8",
-    hover: "rgba(255,255,255,0.05)",
+    border: "rgba(255,255,255,0.10)",
+    text: "#e8eeff",
+    muted: "#a0b4d0",
+    heading: "#f5f8ff",
+    hover: "rgba(255,255,255,0.06)",
     accent: "#4ade80",
     swatch: "#1e2432",
   },
@@ -216,26 +218,28 @@ export const FONT_SIZE_DEFAULT = 19;
 
 const STORAGE_KEY = "lingua_reader_settings_v3";
 
+const DEFAULTS: ReaderSettings = {
+  theme: "cream",
+  fontSize: FONT_SIZE_DEFAULT,
+  fontFamily: "serif",
+  lineSpacing: "normal",
+  margin: "normal",
+  textAlign: "left",
+};
+
 function load(): ReaderSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<ReaderSettings>;
-      // Validate that saved theme still exists
       const theme: Theme = parsed.theme && parsed.theme in THEMES
         ? parsed.theme as Theme
         : "cream";
-      return {
-        theme,
-        fontSize: FONT_SIZE_DEFAULT,
-        fontFamily: "serif",
-        lineSpacing: "normal",
-        margin: "normal",
-        ...parsed,
-      };
+      const textAlign: TextAlign = parsed.textAlign === "justify" ? "justify" : "left";
+      return { ...DEFAULTS, ...parsed, theme, textAlign };
     }
   } catch {}
-  return { theme: "cream", fontSize: FONT_SIZE_DEFAULT, fontFamily: "serif", lineSpacing: "normal", margin: "normal" };
+  return { ...DEFAULTS };
 }
 
 export function useReaderSettings() {
@@ -255,5 +259,6 @@ export function useReaderSettings() {
     setFontFamily: (v: FontFamily)  => update("fontFamily", v),
     setLineSpacing:(v: LineSpacing) => update("lineSpacing", v),
     setMargin:     (v: Margin)      => update("margin", v),
+    setTextAlign:  (v: TextAlign)   => update("textAlign", v),
   };
 }
