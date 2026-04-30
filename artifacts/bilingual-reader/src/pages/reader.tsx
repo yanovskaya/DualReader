@@ -19,7 +19,6 @@ import {
   THEME_LABELS,
   FONT_FAMILIES,
   LINE_SPACINGS,
-  MARGINS,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
   type Theme,
@@ -29,14 +28,9 @@ import {
   type ThemeColors,
 } from "@/hooks/use-reader-settings";
 
-// Load more paragraphs per batch so screen-pages work well
-const PAGE_SIZE = 60;
+const PAGE_SIZE = 40;
 const WORDS_PER_MINUTE = 200;
 const AVG_WORDS_PER_PARA = 50;
-
-function batchKey(id: number) { return `lingua_batch_${id}`; }
-function getSaved(id: number) { try { return Math.max(1, parseInt(localStorage.getItem(batchKey(id)) || "1") || 1); } catch { return 1; } }
-function saveBatch(id: number, p: number) { try { localStorage.setItem(batchKey(id), String(p)); } catch {} }
 
 function timeLeft(remaining: number) {
   const m = Math.round(remaining * AVG_WORDS_PER_PARA / WORDS_PER_MINUTE);
@@ -45,7 +39,7 @@ function timeLeft(remaining: number) {
   return `~${Math.round(m / 60)} ч`;
 }
 
-// ── Dictionary entry ──────────────────────────────────────────────────────────
+// ── Dictionary entry ───────────────────────────────────────────────────────────
 function WordDict({ word, context, colors }: { word: string; context: string; colors: ThemeColors }) {
   const clean = word.toLowerCase().replace(/[^\w-]/g, "");
   const { data: entry, isLoading, isError } = useLookupWord(
@@ -76,7 +70,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
   );
 }
 
-// ── Settings bottom sheet ─────────────────────────────────────────────────────
+// ── Settings bottom sheet ──────────────────────────────────────────────────────
 function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin }: {
   colors: ThemeColors;
   settings: ReturnType<typeof useReaderSettings>["settings"];
@@ -120,7 +114,7 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
             <span style={{ fontSize: 22, color: colors.muted }}>A</span>
           </div>
           <div style={{ fontSize: settings.fontSize, fontFamily: FONT_FAMILIES[settings.fontFamily].css, color: colors.muted, lineHeight: LINE_SPACINGS[settings.lineSpacing].value, textAlign: "center" }}>
-            Пример текста — Sample text
+            Пример / Sample
           </div>
         </div>
 
@@ -141,17 +135,6 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
             {(["compact", "normal", "relaxed"] as LineSpacing[]).map(ls => (
               <button key={ls} onClick={() => setLineSpacing(ls)} style={chip(settings.lineSpacing === ls)}>
                 {LINE_SPACINGS[ls].label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={row}>
-          <div style={label}>Поля</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {(["narrow", "normal", "wide"] as Margin[]).map(m => (
-              <button key={m} onClick={() => setMargin(m)} style={chip(settings.margin === m)}>
-                {MARGINS[m].label}
               </button>
             ))}
           </div>
@@ -180,28 +163,22 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
   );
 }
 
-// ── Translation bottom drawer — only dictionary now ───────────────────────────
+// ── Dictionary drawer ──────────────────────────────────────────────────────────
 type PanelState =
   | { kind: "hidden" }
   | { kind: "dict"; word: string; paragraph: Paragraph };
 
-function TranslationDrawer({ panel, colors, onClose }: {
-  panel: PanelState; colors: ThemeColors; onClose: () => void;
-}) {
+function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: ThemeColors; onClose: () => void }) {
   if (panel.kind === "hidden") return null;
   return (
     <div style={{
       position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
-      background: colors.drawerBg,
-      borderRadius: "18px 18px 0 0",
+      background: colors.drawerBg, borderRadius: "18px 18px 0 0",
       boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
-      padding: "0 20px 44px",
-      maxHeight: "55vh",
-      overflowY: "auto",
-      WebkitOverflowScrolling: "touch" as never,
+      padding: "0 20px 44px", maxHeight: "55vh", overflowY: "auto",
       animation: "slideUp 0.22s ease",
     }}>
-      <style>{`@keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
+      <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 4 }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: colors.border }} />
       </div>
@@ -217,7 +194,7 @@ function TranslationDrawer({ panel, colors, onClose }: {
   );
 }
 
-// ── Main Reader ───────────────────────────────────────────────────────────────
+// ── Main Reader ────────────────────────────────────────────────────────────────
 export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
   const bookId = parseInt(id || "0", 10);
@@ -225,350 +202,243 @@ export default function ReaderPage() {
   const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin } = useReaderSettings();
   const colors = THEMES[settings.theme];
 
-  // API batch page (20–60 paragraphs each)
-  const [batch, setBatch] = useState(() => getSaved(bookId));
-  // Screen page = which CSS column is visible
-  const [screenPage, setScreenPage] = useState(0);
-  const [totalScreenPages, setTotalScreenPages] = useState(1);
+  // Incremental batch loading — always starts at 1, accumulates
+  const [currentBatch, setCurrentBatch] = useState(1);
+  const [totalBatches, setTotalBatches] = useState(1);
+  const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
+  const loadingNextBatch = useRef(false);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
-  // Paragraphs whose Russian translation is visible inline
-  const [visibleTranslations, setVisibleTranslations] = useState<Set<number>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
-  const [headerVisible, setHeaderVisible] = useState(true);
 
-  // Refs for CSS-column layout measurement
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [colWidth, setColWidth] = useState(0);
-  const colWidthRef = useRef(0);
+  // Scroll ref for progress tracking
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollPct, setScrollPct] = useState(0);
 
-  // Refs for window-level handlers
-  const panelOpen = useRef(false);
-  const settingsOpen = useRef(false);
-  const totalBatchesRef = useRef(1);
-  // When navigating to prev batch, jump to its last screen after measuring
-  const pendingLastScreen = useRef(false);
+  // Sentinel div at the bottom to trigger next batch load
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const { data: book, isLoading: isLoadingBook } = useGetBook(bookId, {
     query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
   });
 
+  const { data: paragraphsData, isSuccess } = useListParagraphs(
+    bookId,
+    { page: currentBatch, pageSize: PAGE_SIZE },
+    { query: { enabled: !!bookId, queryKey: getListParagraphsQueryKey(bookId, { page: currentBatch, pageSize: PAGE_SIZE }) } }
+  );
+
   const { data: statusData } = useGetTranslationStatus(bookId, {
     query: {
       enabled: !!bookId,
+      refetchInterval: 5000,
       queryKey: getGetTranslationStatusQueryKey(bookId),
-      refetchInterval: d =>
-        d?.state?.data?.status === "in_progress" || d?.state?.data?.status === "pending" ? 4000 : false,
     },
   });
-  const isTranslating = statusData?.status === "in_progress" || statusData?.status === "pending";
 
-  const { data: paragraphsData, isLoading: isLoadingParagraphs } = useListParagraphs(
-    bookId,
-    { page: batch, pageSize: PAGE_SIZE },
-    {
-      query: {
-        enabled: !!bookId,
-        queryKey: getListParagraphsQueryKey(bookId, { page: batch, pageSize: PAGE_SIZE }),
-        refetchInterval: isTranslating ? 4000 : false,
-      },
-    }
-  );
-
-  // Keep refs in sync
-  useEffect(() => { panelOpen.current = panel.kind !== "hidden"; }, [panel.kind]);
-  useEffect(() => { settingsOpen.current = showSettings; }, [showSettings]);
-  useEffect(() => { totalBatchesRef.current = paragraphsData?.totalPages ?? 1; }, [paragraphsData?.totalPages]);
-
-  // Sync body background with theme
+  // Accumulate paragraphs as batches load
   useEffect(() => {
-    const prev = document.body.style.background;
-    const prevHtml = document.documentElement.style.background;
-    document.body.style.background = colors.bg;
-    document.documentElement.style.background = colors.bg;
-    return () => {
-      document.body.style.background = prev;
-      document.documentElement.style.background = prevHtml;
-    };
-  }, [colors.bg]);
+    if (!isSuccess || !paragraphsData?.paragraphs) return;
+    setTotalBatches(paragraphsData.totalPages ?? 1);
+    setAllParagraphs(prev => {
+      const existingIds = new Set(prev.map(p => p.id));
+      const newOnes = paragraphsData.paragraphs.filter(p => !existingIds.has(p.id));
+      if (newOnes.length === 0) return prev;
+      return [...prev, ...newOnes];
+    });
+    loadingNextBatch.current = false;
+  }, [isSuccess, paragraphsData]);
 
-  // ── Measure CSS columns after text renders ────────────────────────────────
-  const measure = useCallback(() => {
-    const wrapper = wrapperRef.current;
-    const content = contentRef.current;
-    if (!wrapper || !content) return;
-    const cw = wrapper.clientWidth;
-    if (cw < 10) return;
-    colWidthRef.current = cw;
-    setColWidth(cw);
-    const total = Math.max(1, Math.round(content.scrollWidth / cw));
-    setTotalScreenPages(total);
-    // If we navigated backward to a prev batch, land on its last screen
-    if (pendingLastScreen.current) {
-      pendingLastScreen.current = false;
-      setScreenPage(total - 1);
-    }
+  // Infinite scroll — load next batch when sentinel becomes visible
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && !loadingNextBatch.current) {
+        setCurrentBatch(prev => {
+          if (prev < totalBatches) {
+            loadingNextBatch.current = true;
+            return prev + 1;
+          }
+          return prev;
+        });
+      }
+    }, { rootMargin: "200px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [totalBatches]);
+
+  // Scroll progress
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const scrollable = el.scrollHeight - el.clientHeight;
+      setScrollPct(scrollable > 0 ? Math.min(1, el.scrollTop / scrollable) : 0);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Sync theme to body background
   useEffect(() => {
-    // Measure after text+fonts settle
-    const t1 = setTimeout(measure, 80);
-    const t2 = setTimeout(measure, 350); // re-measure after fonts load
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [paragraphsData, settings.fontSize, settings.lineSpacing, settings.margin, settings.fontFamily, measure, visibleTranslations]);
+    document.body.style.background = colors.bg;
+    document.documentElement.style.background = colors.bg;
+  }, [colors.bg]);
 
-  // Also re-measure on resize
-  useEffect(() => {
-    window.addEventListener("resize", measure, { passive: true });
-    return () => window.removeEventListener("resize", measure);
-  }, [measure]);
-
-  // Reset screen page when batch changes (unless pending last screen)
-  useEffect(() => {
-    if (!pendingLastScreen.current) setScreenPage(0);
-  }, [batch]);
-
-  // ── Navigation ───────────────────────────────────────────────────────────
-  const goNextScreen = useCallback(() => {
-    setScreenPage(sp => {
-      if (sp < totalScreenPages - 1) return sp + 1;
-      // End of this batch → load next batch
-      const nextBatch = batch + 1;
-      if (nextBatch <= totalBatchesRef.current) {
-        setBatch(nextBatch);
-        saveBatch(bookId, nextBatch);
-        setPanel({ kind: "hidden" });
-        return 0;
-      }
-      return sp; // already at the very end
-    });
-  }, [batch, bookId, totalScreenPages]);
-
-  const goPrevScreen = useCallback(() => {
-    setScreenPage(sp => {
-      if (sp > 0) return sp - 1;
-      // Start of this batch → load prev batch
-      const prevBatch = batch - 1;
-      if (prevBatch >= 1) {
-        pendingLastScreen.current = true; // land on last screen of prev batch
-        setBatch(prevBatch);
-        saveBatch(bookId, prevBatch);
-        setPanel({ kind: "hidden" });
-      }
-      return sp;
-    });
-  }, [batch, bookId]);
-
-  // ── Window-level swipe (works on non-scrollable content) ────────────────
-  useEffect(() => {
-    let sx = 0, sy = 0;
-    const onStart = (e: TouchEvent) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; };
-    const onEnd = (e: TouchEvent) => {
-      if (panelOpen.current || settingsOpen.current) return;
-      const dx = e.changedTouches[0].clientX - sx;
-      const dy = Math.abs(e.changedTouches[0].clientY - sy);
-      if (Math.abs(dx) > 55 && dy < Math.abs(dx) * 0.75) {
-        if (dx < 0) goNextScreen();
-        else goPrevScreen();
-      }
-    };
-    window.addEventListener("touchstart", onStart, { passive: true });
-    window.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      window.removeEventListener("touchstart", onStart);
-      window.removeEventListener("touchend", onEnd);
-    };
-  }, [goNextScreen, goPrevScreen]);
-
-  // ── Tap zones ─────────────────────────────────────────────────────────────
-  const handleContentTap = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.dataset.word || target.closest("button") || target.closest("[data-nontap]")) return;
-    if (panel.kind !== "hidden") { return; }
-
-    const x = e.clientX;
-    const w = window.innerWidth;
-    if (x < w * 0.25) goPrevScreen();
-    else if (x > w * 0.75) goNextScreen();
-    else setHeaderVisible(v => !v);
-  }, [panel.kind, goNextScreen, goPrevScreen]);
-
-  // ── Word / paragraph interaction ─────────────────────────────────────────
   const handleWordDoubleClick = useCallback((word: string, p: Paragraph) => {
     setPanel({ kind: "dict", word, paragraph: p });
     setShowSettings(false);
   }, []);
 
-  const toggleTranslation = useCallback((id: number) => {
-    setVisibleTranslations(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const closePanel = useCallback(() => {
-    setPanel({ kind: "hidden" });
-  }, []);
-
-  // ── Progress ──────────────────────────────────────────────────────────────
-  const totalBatches = paragraphsData?.totalPages ?? 1;
-  const totalParas = book?.totalParagraphs ?? 0;
-  const remaining = totalParas - Math.min((batch - 1) * PAGE_SIZE, totalParas);
-  // Fractional batch progress: (batch-1) + screenPage/totalScreenPages
-  const fracBatch = (batch - 1) + (totalScreenPages > 1 ? screenPage / totalScreenPages : 0);
-  const progressPct = totalBatches > 0 ? (fracBatch / totalBatches) * 100 : 0;
-  // Display: "screen N of M in this batch"
-  const screenLabel = totalScreenPages > 1 ? `${screenPage + 1}/${totalScreenPages} · ` : "";
+  const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
 
   const bodyFont = FONT_FAMILIES[settings.fontFamily].css;
   const headingFont = "Georgia, 'Times New Roman', serif";
   const lineHeight = LINE_SPACINGS[settings.lineSpacing].value;
-  const padH = MARGINS[settings.margin].value.split(" ")[1] ?? "20px";
+
+  // Progress info
+  const translatedPct = statusData ? Math.round(statusData.progressPercent ?? 0) : null;
+  const totalParas = book?.totalParagraphs ?? 0;
+  const remaining = Math.max(0, totalParas - allParagraphs.length);
 
   if (isLoadingBook) {
-    return <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: colors.bg }}>
-      <Loader2 size={28} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
-    </div>;
+    return (
+      <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: colors.bg }}>
+        <Loader2 size={28} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
   }
 
   if (!book) {
-    return <div style={{ height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: colors.bg }}>
-      <p style={{ color: colors.muted }}>Книга не найдена.</p>
-      <Link href="/"><button style={{ color: colors.text, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "6px 16px", background: "transparent", cursor: "pointer" }}>← Библиотека</button></Link>
-    </div>;
+    return (
+      <div style={{ height: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: colors.bg }}>
+        <p style={{ color: colors.muted }}>Книга не найдена.</p>
+        <Link href="/"><button style={{ color: colors.text, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "6px 16px", background: "transparent", cursor: "pointer" }}>← Библиотека</button></Link>
+      </div>
+    );
   }
 
-  return (
-    <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text, overflow: "hidden" }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+  const HEADER_H = 88; // px — two-row header
 
-      {/* ── Fixed header ────────────────────────────────────────────── */}
+  return (
+    <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* ── Fixed header ─────────────────────────────────────────────── */}
       <header style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 30,
         background: colors.headerBg,
         borderBottom: `1px solid ${colors.border}`,
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
-        transform: headerVisible ? "translateY(0)" : "translateY(-100%)",
-        transition: "transform 0.28s ease",
       }}>
-        <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 14px", height: 50, display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Row 1: nav */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 10px", height: 50 }}>
           <Link href="/">
             <button style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
               <ArrowLeft size={17} />
             </button>
           </Link>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: colors.heading, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{book.title}</p>
-            <p style={{ fontSize: 11, color: colors.muted, margin: 0 }}>
-              {Math.round(progressPct)}% · {screenLabel}{timeLeft(remaining)}
-              {isTranslating && <> · <span style={{ color: "#d97706" }}>
-                <Loader2 size={10} style={{ display: "inline", verticalAlign: "middle", animation: "spin 1s linear infinite" }} />
-                {" "}{Math.round(statusData?.progressPercent || 0)}% пер.
-              </span></>}
-            </p>
+            <div style={{ fontSize: 13, fontWeight: 600, color: colors.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {book.title}
+            </div>
+            <div style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+              {Math.round(scrollPct * 100)}%
+              {remaining > 0 && ` · ${timeLeft(remaining)} осталось`}
+              {translatedPct !== null && translatedPct < 100 && (
+                <span style={{ marginLeft: 6, color: colors.accent }}>⟳ {translatedPct}% пер.</span>
+              )}
+            </div>
           </div>
-          <button onClick={() => setShowSettings(s => !s)}
-            style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: showSettings ? colors.hover : "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+          <button onClick={() => setShowSettings(s => !s)} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Settings2 size={17} />
           </button>
         </div>
+
+        {/* Row 2: progress bar + column labels */}
+        <div style={{ height: 38, borderTop: `1px solid ${colors.border}`, display: "flex", alignItems: "stretch" }}>
+          {/* Progress bar underlay */}
+          <div style={{ position: "absolute", bottom: 0, left: 0, height: 2, width: `${scrollPct * 100}%`, background: colors.accent, transition: "width 0.2s" }} />
+          {/* EN label */}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.muted, opacity: 0.7 }}>EN</span>
+          </div>
+          {/* Divider */}
+          <div style={{ width: 1, background: colors.border }} />
+          {/* RU label */}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.accent, opacity: 0.8 }}>RU</span>
+          </div>
+        </div>
       </header>
 
-      {/* ── Screen-sized reading area ────────────────────────────────── */}
-      {/* wrapperRef clips content; contentRef holds CSS columns */}
+      {/* ── Scrollable content ───────────────────────────────────────── */}
       <div
-        ref={wrapperRef}
-        onClick={handleContentTap}
+        ref={scrollRef}
         style={{
           flex: 1,
-          overflow: "hidden",
-          marginTop: 50,      // leave room for fixed header
-          position: "relative",
+          overflowY: "auto",
+          paddingTop: HEADER_H,
+          WebkitOverflowScrolling: "touch" as never,
         }}
+        onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
       >
-        {isLoadingParagraphs ? (
-          <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Loader2 size={28} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
+        {allParagraphs.length === 0 && (
+          <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+            <Loader2 size={22} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
           </div>
-        ) : (
-          <div
-            ref={contentRef}
-            style={{
-              // CSS multi-column: each column = one screen
-              columnCount: 1,
-              columnFill: "auto",
-              columnGap: 0,
-              // height must match the wrapper exactly so columns are screen-height
-              height: "100%",
-              // Slide to current screen page
-              transform: `translateX(${-screenPage * colWidth}px)`,
-              transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
-              willChange: "transform",
-              // Vertical padding only — horizontal padding lives inside each BookParagraph
-              // so every CSS column (screen page) gets consistent margins
-              paddingTop: 16,
-              paddingBottom: 20,
-              boxSizing: "border-box",
-            }}
-          >
-            {paragraphsData?.paragraphs?.map(p => (
-              <BookParagraph
-                key={p.id}
-                paragraph={p}
-                showTranslation={visibleTranslations.has(p.id)}
-                onToggleTranslation={() => toggleTranslation(p.id)}
-                onWordDoubleClick={handleWordDoubleClick}
-                colors={colors}
-                fontSize={settings.fontSize}
-                fontFamily={bodyFont}
-                headingFontFamily={headingFont}
-                lineHeight={lineHeight}
-                padH={padH}
-              />
-            ))}
+        )}
+
+        {allParagraphs.map(p => (
+          <BookParagraph
+            key={p.id}
+            paragraph={p}
+            onWordDoubleClick={handleWordDoubleClick}
+            colors={colors}
+            fontSize={settings.fontSize}
+            fontFamily={bodyFont}
+            headingFontFamily={headingFont}
+            lineHeight={lineHeight}
+          />
+        ))}
+
+        {/* Sentinel — triggers next batch load */}
+        <div ref={sentinelRef} style={{ height: 1 }} />
+
+        {/* Loading indicator */}
+        {loadingNextBatch.current && (
+          <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
+            <Loader2 size={18} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
+          </div>
+        )}
+
+        {/* End of book */}
+        {currentBatch >= totalBatches && allParagraphs.length > 0 && (
+          <div style={{ textAlign: "center", padding: "32px 20px 60px", color: colors.muted, fontSize: 13 }}>
+            ✦ Конец книги ✦
           </div>
         )}
       </div>
 
-      {/* ── Progress bar at bottom ───────────────────────────────────── */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20 }}>
-        {/* Page indicator dots */}
-        {totalScreenPages > 1 && totalScreenPages <= 20 && (
-          <div data-nontap="1" style={{ display: "flex", justifyContent: "center", gap: 5, paddingBottom: 6 }}>
-            {Array.from({ length: totalScreenPages }).map((_, i) => (
-              <div key={i} style={{
-                width: i === screenPage ? 16 : 6, height: 6, borderRadius: 3,
-                background: i === screenPage ? colors.accent : colors.border,
-                transition: "all 0.2s",
-              }} />
-            ))}
-          </div>
-        )}
-        <div style={{ height: 3, background: colors.border }}>
-          <div style={{ height: "100%", width: `${progressPct}%`, background: colors.accent, transition: "width 0.4s ease" }} />
-        </div>
-      </div>
-
-      {/* ── Translation drawer ────────────────────────────────────────── */}
-      {panel.kind !== "hidden" && (
-        <>
-          <div onClick={closePanel} style={{ position: "fixed", inset: 0, zIndex: 35, background: "rgba(0,0,0,0.2)" }} />
-          <TranslationDrawer panel={panel} colors={colors} onClose={closePanel} />
-        </>
-      )}
-
-      {/* ── Settings bottom sheet ─────────────────────────────────────── */}
+      {/* ── Settings sheet ───────────────────────────────────────────── */}
       {showSettings && (
         <SettingsSheet
-          colors={colors} settings={settings}
+          colors={colors}
+          settings={settings}
           onClose={() => setShowSettings(false)}
-          setTheme={setTheme} setFontSize={setFontSize}
-          setFontFamily={setFontFamily} setLineSpacing={setLineSpacing} setMargin={setMargin}
+          setTheme={setTheme}
+          setFontSize={setFontSize}
+          setFontFamily={setFontFamily}
+          setLineSpacing={setLineSpacing}
+          setMargin={setMargin}
         />
       )}
+
+      {/* ── Dictionary drawer ────────────────────────────────────────── */}
+      <DictDrawer panel={panel} colors={colors} onClose={closePanel} />
     </div>
   );
 }
