@@ -260,6 +260,14 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   );
 }
 
+// Returns the scroll-relative top of `el` inside scroll `container`,
+// working correctly regardless of CSS positioning on the container.
+function getRelTop(el: HTMLElement, container: HTMLElement): number {
+  const cRect = container.getBoundingClientRect();
+  const eRect = el.getBoundingClientRect();
+  return eRect.top - cRect.top + container.scrollTop;
+}
+
 // ── Main Reader ────────────────────────────────────────────────────────────────
 export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
@@ -402,16 +410,20 @@ export default function ReaderPage() {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      // Paragraph-level sync when RU panel mounts
+      // Paragraph-level sync when RU panel mounts — use BoundingClientRect for accuracy
+      const enCRect = en.getBoundingClientRect();
       const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
       let synced = false;
       for (const el of enParas) {
-        if (el.offsetTop + el.offsetHeight > en.scrollTop) {
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom > enCRect.top) {
           const paraId = el.id.replace("para-", "");
           const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
           if (ruPara) {
-            const intra = Math.max(0, en.scrollTop - el.offsetTop) / el.offsetHeight;
-            ru.scrollTop = ruPara.offsetTop + intra * ruPara.offsetHeight;
+            const intra = Math.max(0, enCRect.top - rect.top) / Math.max(1, rect.height);
+            const ruCRect = ru.getBoundingClientRect();
+            const ruParaRect = ruPara.getBoundingClientRect();
+            ru.scrollTop = ruParaRect.top - ruCRect.top + ru.scrollTop + intra * ruPara.getBoundingClientRect().height;
             synced = true;
           }
           break;
@@ -470,33 +482,31 @@ export default function ReaderPage() {
     syncSource.current = "en";
     clearSyncTimer();
 
-    // Paragraph-level sync: find the first EN paragraph that crosses the top of the viewport
+    // Find first EN paragraph whose bottom edge is below the top of the EN panel
+    const enCRect = en.getBoundingClientRect();
     const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
     let synced = false;
     for (const el of enParas) {
-      const paraBottom = el.offsetTop + el.offsetHeight;
-      if (paraBottom > en.scrollTop) {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > enCRect.top) {
         const paraId = el.id.replace("para-", "");
         const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
         if (ruPara) {
-          // Mirror intra-paragraph progress so the same sentence stays aligned
-          const intra = Math.max(0, en.scrollTop - el.offsetTop) / el.offsetHeight;
-          ru.scrollTop = ruPara.offsetTop + intra * ruPara.offsetHeight;
+          // How far through the EN paragraph are we (0 = top, 1 = bottom)
+          const intra = Math.max(0, enCRect.top - rect.top) / Math.max(1, rect.height);
+          ru.scrollTop = getRelTop(ruPara, ru) + intra * ruPara.getBoundingClientRect().height;
           synced = true;
         }
         break;
       }
     }
-    // Fallback to ratio sync if paragraph lookup failed
     if (!synced) {
       ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
     }
-
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
   }, [clearSyncTimer, saveProgressDebounced]);
 
   const handleRuScroll = useCallback(() => {
-    // Only propagate if RU is the active source (or no source yet)
     if (syncSource.current === "en") return;
     const ru = ruRef.current;
     const en = enRef.current;
@@ -504,27 +514,27 @@ export default function ReaderPage() {
     syncSource.current = "ru";
     clearSyncTimer();
 
-    // Paragraph-level sync: find the first RU paragraph crossing the top of RU viewport
+    // Find first RU paragraph whose bottom edge is below the top of the RU panel
+    const ruCRect = ru.getBoundingClientRect();
     const ruParas = ru.querySelectorAll<HTMLElement>("[data-ru-para]");
     let synced = false;
     for (const el of ruParas) {
-      const paraBottom = el.offsetTop + el.offsetHeight;
-      if (paraBottom > ru.scrollTop) {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > ruCRect.top) {
         const paraId = el.getAttribute("data-ru-para");
         const enPara = paraId ? en.querySelector<HTMLElement>(`#para-${paraId}`) : null;
         if (enPara) {
-          const intra = Math.max(0, ru.scrollTop - el.offsetTop) / el.offsetHeight;
-          en.scrollTop = enPara.offsetTop + intra * enPara.offsetHeight;
+          const intra = Math.max(0, ruCRect.top - rect.top) / Math.max(1, rect.height);
+          en.scrollTop = getRelTop(enPara, en) + intra * enPara.getBoundingClientRect().height;
           synced = true;
         }
         break;
       }
     }
-    // Fallback to ratio sync
     if (!synced) {
       const ruScrollable = ru.scrollHeight - ru.clientHeight;
-      const ratio = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
-      en.scrollTop = ratio * (en.scrollHeight - en.clientHeight);
+      const r = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
+      en.scrollTop = r * (en.scrollHeight - en.clientHeight);
     }
 
     // Update progress bar from EN position
