@@ -1,0 +1,88 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a7a50"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f0ede6"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#f8f5ee"/>
+      <stop offset="100%" stop-color="#e8e2d8"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#00000030"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+
+  <!-- Book shadow -->
+  <ellipse cx="256" cy="406" rx="140" ry="10" fill="#00000025"/>
+
+  <!-- Book body (open book) -->
+  <!-- Left page -->
+  <path d="M92 138 C92 130 98 124 106 124 L248 124 L248 388 C220 382 150 378 92 388 Z"
+        fill="#faf8f3" filter="url(#shadow)"/>
+  <!-- Right page -->
+  <path d="M420 138 C420 130 414 124 406 124 L264 124 L264 388 C292 382 362 378 420 388 Z"
+        fill="#f3ede0" filter="url(#shadow)"/>
+
+  <!-- Spine -->
+  <rect x="246" y="120" width="20" height="272" rx="4" fill="#0a7a50" opacity="0.8"/>
+  <!-- Spine highlight -->
+  <rect x="246" y="120" width="3" height="272" rx="2" fill="white" opacity="0.25"/>
+
+  <!-- Book top arc (binding) -->
+  <path d="M92 138 Q100 118 248 124 L264 124 Q412 118 420 138" stroke="#0a7a50" stroke-width="3" fill="none" opacity="0.4"/>
+
+  <!-- EN section (top 75%) - text lines on left page -->
+  <rect x="112" y="155" width="116" height="7" rx="3.5" fill="#2a2018" opacity="0.18"/>
+  <rect x="112" y="172" width="124" height="7" rx="3.5" fill="#2a2018" opacity="0.15"/>
+  <rect x="112" y="189" width="98"  height="7" rx="3.5" fill="#2a2018" opacity="0.13"/>
+  <rect x="112" y="206" width="120" height="7" rx="3.5" fill="#2a2018" opacity="0.15"/>
+  <rect x="112" y="223" width="108" height="7" rx="3.5" fill="#2a2018" opacity="0.12"/>
+  <rect x="112" y="240" width="126" height="7" rx="3.5" fill="#2a2018" opacity="0.14"/>
+  <rect x="112" y="257" width="90"  height="7" rx="3.5" fill="#2a2018" opacity="0.11"/>
+
+  <!-- Divider line on left page -->
+  <rect x="100" y="284" width="140" height="2" rx="1" fill="#059669" opacity="0.45"/>
+
+  <!-- RU section (bottom 25%) - italic/different lines on left page -->
+  <rect x="112" y="298" width="118" height="6" rx="3" fill="#2a2018" opacity="0.22"/>
+  <rect x="112" y="313" width="126" height="6" rx="3" fill="#2a2018" opacity="0.19"/>
+  <rect x="112" y="328" width="100" height="6" rx="3" fill="#2a2018" opacity="0.17"/>
+  <rect x="112" y="343" width="114" height="6" rx="3" fill="#2a2018" opacity="0.20"/>
+
+  <!-- EN lines on right page -->
+  <rect x="274" y="155" width="116" height="7" rx="3.5" fill="#2a2018" opacity="0.14"/>
+  <rect x="274" y="172" width="108" height="7" rx="3.5" fill="#2a2018" opacity="0.12"/>
+  <rect x="274" y="189" width="124" height="7" rx="3.5" fill="#2a2018" opacity="0.13"/>
+  <rect x="274" y="206" width="96"  height="7" rx="3.5" fill="#2a2018" opacity="0.11"/>
+  <rect x="274" y="223" width="118" height="7" rx="3.5" fill="#2a2018" opacity="0.13"/>
+  <rect x="274" y="240" width="104" height="7" rx="3.5" fill="#2a2018" opacity="0.10"/>
+  <rect x="274" y="257" width="122" height="7" rx="3.5" fill="#2a2018" opacity="0.12"/>
+
+  <!-- Divider line on right page -->
+  <rect x="264" y="284" width="148" height="2" rx="1" fill="#059669" opacity="0.35"/>
+
+  <!-- RU lines on right page -->
+  <rect x="274" y="298" width="120" height="6" rx="3" fill="#2a2018" opacity="0.18"/>
+  <rect x="274" y="313" width="110" height="6" rx="3" fill="#2a2018" opacity="0.16"/>
+  <rect x="274" y="328" width="128" height="6" rx="3" fill="#2a2018" opacity="0.15"/>
+  <rect x="274" y="343" width="102" height="6" rx="3" fill="#2a2018" opacity="0.17"/>
+
+  <!-- "EN" label top-left corner of left page -->
+  <rect x="106" y="132" width="26" height="14" rx="4" fill="#059669" opacity="0.9"/>
+  <!-- EN dots (simulate "EN" text) -->
+  <rect x="110" y="136" width="6" height="6" rx="1" fill="white" opacity="0.95"/>
+  <rect x="118" y="136" width="10" height="6" rx="1" fill="white" opacity="0.95"/>
+
+  <!-- "RU" label top-left of right page -->
+  <rect x="266" y="132" width="26" height="14" rx="4" fill="#7c5c3a" opacity="0.8"/>
+  <rect x="270" y="136" width="9" height="6" rx="1" fill="white" opacity="0.95"/>
+  <rect x="281" y="136" width="7" height="6" rx="1" fill="white" opacity="0.95"/>
+</svg>

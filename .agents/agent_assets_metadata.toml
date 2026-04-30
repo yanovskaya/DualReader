@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "mSpKMwy5kKOEoTXgHu0oW"
+uri = "file://artifacts/bilingual-reader/public/icon-512.png"
+type = "image"
+title = "Иконка Lingua (512×512)"
