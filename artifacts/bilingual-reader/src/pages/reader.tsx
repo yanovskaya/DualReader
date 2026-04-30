@@ -585,11 +585,35 @@ export default function ReaderPage() {
       `}</style>
 
       {/* ── Always-visible progress bar (top: 0) ─────────────────────── */}
-      <div style={{
-        position: "fixed", top: 0, left: 0, right: 0, zIndex: 32,
-        height: PROG_H, background: colors.border,
-      }}>
-        <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
+      <div
+        onClick={() => { if (!showHeader) setShowHeader(true); }}
+        style={{
+          position: "fixed", top: 0, left: 0, right: 0, zIndex: 32,
+          height: showHeader ? PROG_H : 20,
+          cursor: showHeader ? "default" : "pointer",
+        }}
+      >
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: PROG_H, background: colors.border }}>
+          <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
+        </div>
+        {/* Chevron indicator — only shown when header is hidden */}
+        {!showHeader && (
+          <div style={{
+            position: "absolute", top: PROG_H, left: "50%", transform: "translateX(-50%)",
+            width: 28, height: 14,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: colors.headerBg,
+            borderRadius: "0 0 8px 8px",
+            borderBottom: `1px solid ${colors.border}`,
+            borderLeft: `1px solid ${colors.border}`,
+            borderRight: `1px solid ${colors.border}`,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.10)",
+          }}>
+            <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+              <path d="M1 1l4 4 4-4" stroke={colors.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* ── Nav header — slides away when showHeader=false ───────────── */}
@@ -637,16 +661,6 @@ export default function ReaderPage() {
         </div>
       </header>
 
-      {/* ── Tap zone to restore header when hidden ───────────────────── */}
-      {!showHeader && (
-        <div
-          onClick={() => setShowHeader(true)}
-          style={{
-            position: "fixed", top: PROG_H, left: 0, right: 0, height: 32,
-            zIndex: 29, cursor: "pointer",
-          }}
-        />
-      )}
 
       {/* ── Two synced scroll panels ──────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: showHeader ? HEADER_H : PROG_H, transition: "padding-top 0.25s ease" }}>
