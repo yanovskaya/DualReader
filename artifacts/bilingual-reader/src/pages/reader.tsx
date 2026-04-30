@@ -213,11 +213,13 @@ export default function ReaderPage() {
   // Global toggle: show or hide Russian translations
   const [showTranslations, setShowTranslations] = useState(true);
 
-  // Scroll ref for progress tracking
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // Two synced scroll panels — EN on top, RU on bottom
+  const enRef = useRef<HTMLDivElement>(null);
+  const ruRef = useRef<HTMLDivElement>(null);
+  const isSyncing = useRef(false);
   const [scrollPct, setScrollPct] = useState(0);
 
-  // Sentinel div at the bottom to trigger next batch load
+  // Sentinel div at the bottom of the EN panel to trigger next batch load
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const { data: book, isLoading: isLoadingBook } = useGetBook(bookId, {
@@ -270,16 +272,32 @@ export default function ReaderPage() {
     return () => observer.disconnect();
   }, [totalBatches]);
 
-  // Scroll progress
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const scrollable = el.scrollHeight - el.clientHeight;
-      setScrollPct(scrollable > 0 ? Math.min(1, el.scrollTop / scrollable) : 0);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+  // Sync scroll between EN and RU panels
+  const handleEnScroll = useCallback(() => {
+    const en = enRef.current;
+    const ru = ruRef.current;
+    if (!en) return;
+    const scrollable = en.scrollHeight - en.clientHeight;
+    setScrollPct(scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0);
+    if (!ru || isSyncing.current) return;
+    isSyncing.current = true;
+    const ratio = scrollable > 0 ? en.scrollTop / scrollable : 0;
+    const ruScrollable = ru.scrollHeight - ru.clientHeight;
+    ru.scrollTop = ratio * ruScrollable;
+    requestAnimationFrame(() => { isSyncing.current = false; });
+  }, []);
+
+  const handleRuScroll = useCallback(() => {
+    const en = enRef.current;
+    const ru = ruRef.current;
+    if (!ru || !en || isSyncing.current) return;
+    isSyncing.current = true;
+    const ruScrollable = ru.scrollHeight - ru.clientHeight;
+    const ratio = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
+    const enScrollable = en.scrollHeight - en.clientHeight;
+    en.scrollTop = ratio * enScrollable;
+    setScrollPct(ratio);
+    requestAnimationFrame(() => { isSyncing.current = false; });
   }, []);
 
   // Sync theme to body background
@@ -322,7 +340,7 @@ export default function ReaderPage() {
     );
   }
 
-  const HEADER_H = 82; // px — two-row header (50 nav + 32 labels/toggle)
+  const HEADER_H = 53; // px — header (50 nav + 3 progress bar)
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text }}>
@@ -360,100 +378,129 @@ export default function ReaderPage() {
           </button>
         </div>
 
-        {/* Row 2: column labels + toggle */}
-        <div style={{ height: 32, borderTop: `1px solid ${colors.border}`, display: "flex", position: "relative" }}>
-          {/* Progress bar */}
-          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: colors.border }}>
-            <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
-          </div>
-
-          {/* EN label — takes same 50% as the EN column below */}
-          <div style={{
-            width: showTranslations ? "50%" : "100%",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "width 0.2s",
-          }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.muted }}>EN</span>
-          </div>
-
-          {showTranslations && (
-            <>
-              <div style={{ width: 1, background: colors.border }} />
-              {/* RU label with hide button */}
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 8, paddingRight: 8 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.accent }}>RU</span>
-                <button
-                  onClick={() => setShowTranslations(false)}
-                  style={{ background: "transparent", border: "none", cursor: "pointer", color: colors.muted, fontSize: 12, padding: "2px 4px", lineHeight: 1 }}
-                  title="Скрыть перевод"
-                >✕</button>
-              </div>
-            </>
-          )}
-
-          {!showTranslations && (
-            <button
-              onClick={() => setShowTranslations(true)}
-              style={{
-                position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                padding: "2px 8px", borderRadius: 10,
-                border: `1px solid ${colors.border}`,
-                background: "transparent", color: colors.muted,
-                fontSize: 11, fontWeight: 600, cursor: "pointer",
-              }}
-            >
-              RU ▸
-            </button>
-          )}
+        {/* Row 2: progress bar */}
+        <div style={{ height: 3, background: colors.border }}>
+          <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
         </div>
       </header>
 
-      {/* ── Scrollable content ───────────────────────────────────────── */}
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          overflowX: "hidden",
-          paddingTop: HEADER_H,
-          WebkitOverflowScrolling: "touch" as never,
-        }}
-        onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
-      >
-        {allParagraphs.length === 0 && (
-          <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-            <Loader2 size={22} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
-          </div>
+      {/* ── Two synced scroll panels ──────────────────────────────────── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: HEADER_H }}>
+
+        {/* EN panel */}
+        <div
+          ref={enRef}
+          onScroll={handleEnScroll}
+          style={{
+            flex: showTranslations ? 1 : 1,
+            overflowY: "auto",
+            overflowX: "hidden",
+            WebkitOverflowScrolling: "touch" as never,
+            borderBottom: showTranslations ? `2px solid ${colors.border}` : "none",
+          }}
+          onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
+        >
+          {allParagraphs.length === 0 && (
+            <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+              <Loader2 size={22} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
+            </div>
+          )}
+
+          {allParagraphs.map(p => (
+            <BookParagraph
+              key={p.id}
+              paragraph={p}
+              mode="en"
+              onWordDoubleClick={handleWordDoubleClick}
+              colors={colors}
+              fontSize={settings.fontSize}
+              fontFamily={bodyFont}
+              headingFontFamily={headingFont}
+              lineHeight={lineHeight}
+            />
+          ))}
+
+          {/* Sentinel — triggers next batch load */}
+          <div ref={sentinelRef} style={{ height: 1 }} />
+
+          {loadingNextBatch.current && (
+            <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
+              <Loader2 size={18} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
+            </div>
+          )}
+
+          {currentBatch >= totalBatches && allParagraphs.length > 0 && (
+            <div style={{ textAlign: "center", padding: "32px 20px 60px", color: colors.muted, fontSize: 13 }}>
+              ✦ Конец книги ✦
+            </div>
+          )}
+        </div>
+
+        {/* RU panel divider + panel */}
+        {showTranslations && (
+          <>
+            {/* Divider bar with label and hide button */}
+            <div style={{
+              flexShrink: 0, height: 28,
+              background: colors.border + "44",
+              borderTop: `1px solid ${colors.border}`,
+              borderBottom: `1px solid ${colors.border}`,
+              display: "flex", alignItems: "center",
+              paddingLeft: 14, paddingRight: 10, gap: 8,
+            }}>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: colors.accent }}>RU</span>
+              <div style={{ flex: 1, height: 1, background: colors.border }} />
+              <button
+                onClick={() => setShowTranslations(false)}
+                style={{
+                  background: "transparent", border: "none", cursor: "pointer",
+                  color: colors.muted, fontSize: 13, padding: "0 4px", lineHeight: 1,
+                }}
+                title="Скрыть перевод"
+              >✕</button>
+            </div>
+
+            {/* RU scroll panel */}
+            <div
+              ref={ruRef}
+              onScroll={handleRuScroll}
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                overflowX: "hidden",
+                WebkitOverflowScrolling: "touch" as never,
+              }}
+            >
+              {allParagraphs.map(p => (
+                <BookParagraph
+                  key={p.id}
+                  paragraph={p}
+                  mode="ru"
+                  colors={colors}
+                  fontSize={settings.fontSize}
+                  fontFamily={bodyFont}
+                  headingFontFamily={headingFont}
+                  lineHeight={lineHeight}
+                />
+              ))}
+            </div>
+          </>
         )}
 
-        {allParagraphs.map(p => (
-          <BookParagraph
-            key={p.id}
-            paragraph={p}
-            showTranslation={showTranslations}
-            onWordDoubleClick={handleWordDoubleClick}
-            colors={colors}
-            fontSize={settings.fontSize}
-            fontFamily={bodyFont}
-            headingFontFamily={headingFont}
-            lineHeight={lineHeight}
-          />
-        ))}
-
-        {/* Sentinel — triggers next batch load */}
-        <div ref={sentinelRef} style={{ height: 1 }} />
-
-        {/* Loading indicator */}
-        {loadingNextBatch.current && (
-          <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
-            <Loader2 size={18} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
-          </div>
-        )}
-
-        {/* End of book */}
-        {currentBatch >= totalBatches && allParagraphs.length > 0 && (
-          <div style={{ textAlign: "center", padding: "32px 20px 60px", color: colors.muted, fontSize: 13 }}>
-            ✦ Конец книги ✦
+        {/* Show RU button when hidden */}
+        {!showTranslations && (
+          <div style={{ flexShrink: 0, display: "flex", justifyContent: "center", padding: "10px 0 6px", borderTop: `1px solid ${colors.border}` }}>
+            <button
+              onClick={() => setShowTranslations(true)}
+              style={{
+                padding: "5px 16px", borderRadius: 14,
+                border: `1px solid ${colors.border}`,
+                background: "transparent", color: colors.muted,
+                fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              Показать перевод ▸
+            </button>
           </div>
         )}
       </div>
