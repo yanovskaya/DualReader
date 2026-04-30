@@ -817,12 +817,12 @@ export default function ReaderPage() {
               >✕</button>
             </div>
 
-            {/* RU scroll panel — 15% height, smaller font size */}
+            {/* RU scroll panel — ~18% height, smaller font size */}
             <div
               ref={ruRef}
               onScroll={handleRuScroll}
               style={{
-                flex: 3,
+                flex: 3.75,
                 overflowY: "auto",
                 overflowX: "hidden",
                 WebkitOverflowScrolling: "touch" as never,
