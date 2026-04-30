@@ -331,9 +331,26 @@ export default function ReaderPage() {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      const enScrollable = en.scrollHeight - en.clientHeight;
-      const ratio = enScrollable > 0 ? en.scrollTop / enScrollable : 0;
-      ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+      // Paragraph-level sync when RU panel mounts
+      const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
+      let synced = false;
+      for (const el of enParas) {
+        if (el.offsetTop + el.offsetHeight > en.scrollTop) {
+          const paraId = el.id.replace("para-", "");
+          const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
+          if (ruPara) {
+            const intra = Math.max(0, en.scrollTop - el.offsetTop) / el.offsetHeight;
+            ru.scrollTop = ruPara.offsetTop + intra * ruPara.offsetHeight;
+            synced = true;
+          }
+          break;
+        }
+      }
+      if (!synced) {
+        const enScrollable = en.scrollHeight - en.clientHeight;
+        const ratio = enScrollable > 0 ? en.scrollTop / enScrollable : 0;
+        ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+      }
     }, 50); // wait for panel to mount + render
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -381,7 +398,29 @@ export default function ReaderPage() {
     if (!ru) return;
     syncSource.current = "en";
     clearSyncTimer();
-    ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+
+    // Paragraph-level sync: find the first EN paragraph that crosses the top of the viewport
+    const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
+    let synced = false;
+    for (const el of enParas) {
+      const paraBottom = el.offsetTop + el.offsetHeight;
+      if (paraBottom > en.scrollTop) {
+        const paraId = el.id.replace("para-", "");
+        const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
+        if (ruPara) {
+          // Mirror intra-paragraph progress so the same sentence stays aligned
+          const intra = Math.max(0, en.scrollTop - el.offsetTop) / el.offsetHeight;
+          ru.scrollTop = ruPara.offsetTop + intra * ruPara.offsetHeight;
+          synced = true;
+        }
+        break;
+      }
+    }
+    // Fallback to ratio sync if paragraph lookup failed
+    if (!synced) {
+      ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+    }
+
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
   }, [clearSyncTimer, saveProgressDebounced]);
 
@@ -393,10 +432,33 @@ export default function ReaderPage() {
     if (!ru || !en) return;
     syncSource.current = "ru";
     clearSyncTimer();
-    const ruScrollable = ru.scrollHeight - ru.clientHeight;
-    const ratio = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
-    en.scrollTop = ratio * (en.scrollHeight - en.clientHeight);
-    setScrollPct(ratio);
+
+    // Paragraph-level sync: find the first RU paragraph crossing the top of RU viewport
+    const ruParas = ru.querySelectorAll<HTMLElement>("[data-ru-para]");
+    let synced = false;
+    for (const el of ruParas) {
+      const paraBottom = el.offsetTop + el.offsetHeight;
+      if (paraBottom > ru.scrollTop) {
+        const paraId = el.getAttribute("data-ru-para");
+        const enPara = paraId ? en.querySelector<HTMLElement>(`#para-${paraId}`) : null;
+        if (enPara) {
+          const intra = Math.max(0, ru.scrollTop - el.offsetTop) / el.offsetHeight;
+          en.scrollTop = enPara.offsetTop + intra * enPara.offsetHeight;
+          synced = true;
+        }
+        break;
+      }
+    }
+    // Fallback to ratio sync
+    if (!synced) {
+      const ruScrollable = ru.scrollHeight - ru.clientHeight;
+      const ratio = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
+      en.scrollTop = ratio * (en.scrollHeight - en.clientHeight);
+    }
+
+    // Update progress bar from EN position
+    const enScrollable = en.scrollHeight - en.clientHeight;
+    setScrollPct(enScrollable > 0 ? Math.min(1, en.scrollTop / enScrollable) : 0);
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
   }, [clearSyncTimer]);
 
@@ -575,16 +637,17 @@ export default function ReaderPage() {
               }}
             >
               {allParagraphs.map(p => (
-                <BookParagraph
-                  key={p.id}
-                  paragraph={p}
-                  mode="ru"
-                  colors={colors}
-                  fontSize={Math.max(10, Math.round(settings.fontSize * 0.75))}
-                  fontFamily={bodyFont}
-                  headingFontFamily={headingFont}
-                  lineHeight={lineHeight}
-                />
+                <div key={p.id} data-ru-para={p.id}>
+                  <BookParagraph
+                    paragraph={p}
+                    mode="ru"
+                    colors={colors}
+                    fontSize={Math.max(10, Math.round(settings.fontSize * 0.75))}
+                    fontFamily={bodyFont}
+                    headingFontFamily={headingFont}
+                    lineHeight={lineHeight}
+                  />
+                </div>
               ))}
             </div>
           </>
