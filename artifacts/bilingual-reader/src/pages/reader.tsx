@@ -311,6 +311,51 @@ function getRelTop(el: HTMLElement, container: HTMLElement): number {
   return eRect.top - cRect.top + container.scrollTop;
 }
 
+// Syncs the RU panel so the topmost visible EN paragraph appears at the top of RU.
+// Paragraph-aligned, no intra-paragraph fraction, so it never drifts.
+function syncRuToEn(en: HTMLElement, ru: HTMLElement) {
+  const enCRect = en.getBoundingClientRect();
+  const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
+  for (const el of enParas) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom > enCRect.top) {
+      const paraId = el.id.replace("para-", "");
+      const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
+      if (ruPara) {
+        ru.scrollTop = getRelTop(ruPara, ru);
+        return;
+      }
+      break;
+    }
+  }
+  // Fallback: proportional ratio
+  const scrollable = en.scrollHeight - en.clientHeight;
+  const ratio = scrollable > 0 ? en.scrollTop / scrollable : 0;
+  ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
+}
+
+// Syncs the EN panel to match the topmost visible RU paragraph.
+function syncEnToRu(ru: HTMLElement, en: HTMLElement) {
+  const ruCRect = ru.getBoundingClientRect();
+  const ruParas = ru.querySelectorAll<HTMLElement>("[data-ru-para]");
+  for (const el of ruParas) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom > ruCRect.top) {
+      const paraId = el.getAttribute("data-ru-para");
+      const enPara = paraId ? en.querySelector<HTMLElement>(`#para-${paraId}`) : null;
+      if (enPara) {
+        en.scrollTop = getRelTop(enPara, en);
+        return;
+      }
+      break;
+    }
+  }
+  // Fallback: proportional ratio
+  const ruScrollable = ru.scrollHeight - ru.clientHeight;
+  const r = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
+  en.scrollTop = r * (en.scrollHeight - en.clientHeight);
+}
+
 // ── Main Reader ────────────────────────────────────────────────────────────────
 export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
@@ -451,10 +496,7 @@ export default function ReaderPage() {
         if (scrollable > 0) {
           en.scrollTop = pendingRestoreRatio.current! * scrollable;
           const ru = ruRef.current;
-          if (ru) {
-            const ruScrollable = ru.scrollHeight - ru.clientHeight;
-            ru.scrollTop = pendingRestoreRatio.current! * ruScrollable;
-          }
+          if (ru) syncRuToEn(en, ru);
         }
         pendingRestoreRatio.current = null;
       }
@@ -471,30 +513,7 @@ export default function ReaderPage() {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      // Paragraph-level sync when RU panel mounts — use BoundingClientRect for accuracy
-      const enCRect = en.getBoundingClientRect();
-      const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
-      let synced = false;
-      for (const el of enParas) {
-        const rect = el.getBoundingClientRect();
-        if (rect.bottom > enCRect.top) {
-          const paraId = el.id.replace("para-", "");
-          const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
-          if (ruPara) {
-            const intra = Math.max(0, enCRect.top - rect.top) / Math.max(1, rect.height);
-            const ruCRect = ru.getBoundingClientRect();
-            const ruParaRect = ruPara.getBoundingClientRect();
-            ru.scrollTop = ruParaRect.top - ruCRect.top + ru.scrollTop + intra * ruPara.getBoundingClientRect().height;
-            synced = true;
-          }
-          break;
-        }
-      }
-      if (!synced) {
-        const enScrollable = en.scrollHeight - en.clientHeight;
-        const ratio = enScrollable > 0 ? en.scrollTop / enScrollable : 0;
-        ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
-      }
+      syncRuToEn(en, ru);
     }, 50); // wait for panel to mount + render
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -542,28 +561,7 @@ export default function ReaderPage() {
     if (!ru) return;
     syncSource.current = "en";
     clearSyncTimer();
-
-    // Find first EN paragraph whose bottom edge is below the top of the EN panel
-    const enCRect = en.getBoundingClientRect();
-    const enParas = en.querySelectorAll<HTMLElement>("[id^='para-']");
-    let synced = false;
-    for (const el of enParas) {
-      const rect = el.getBoundingClientRect();
-      if (rect.bottom > enCRect.top) {
-        const paraId = el.id.replace("para-", "");
-        const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
-        if (ruPara) {
-          // How far through the EN paragraph are we (0 = top, 1 = bottom)
-          const intra = Math.max(0, enCRect.top - rect.top) / Math.max(1, rect.height);
-          ru.scrollTop = getRelTop(ruPara, ru) + intra * ruPara.getBoundingClientRect().height;
-          synced = true;
-        }
-        break;
-      }
-    }
-    if (!synced) {
-      ru.scrollTop = ratio * (ru.scrollHeight - ru.clientHeight);
-    }
+    syncRuToEn(en, ru);
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 80);
   }, [clearSyncTimer, saveProgressDebounced]);
 
@@ -574,30 +572,7 @@ export default function ReaderPage() {
     if (!ru || !en) return;
     syncSource.current = "ru";
     clearSyncTimer();
-
-    // Find first RU paragraph whose bottom edge is below the top of the RU panel
-    const ruCRect = ru.getBoundingClientRect();
-    const ruParas = ru.querySelectorAll<HTMLElement>("[data-ru-para]");
-    let synced = false;
-    for (const el of ruParas) {
-      const rect = el.getBoundingClientRect();
-      if (rect.bottom > ruCRect.top) {
-        const paraId = el.getAttribute("data-ru-para");
-        const enPara = paraId ? en.querySelector<HTMLElement>(`#para-${paraId}`) : null;
-        if (enPara) {
-          const intra = Math.max(0, ruCRect.top - rect.top) / Math.max(1, rect.height);
-          en.scrollTop = getRelTop(enPara, en) + intra * enPara.getBoundingClientRect().height;
-          synced = true;
-        }
-        break;
-      }
-    }
-    if (!synced) {
-      const ruScrollable = ru.scrollHeight - ru.clientHeight;
-      const r = ruScrollable > 0 ? ru.scrollTop / ruScrollable : 0;
-      en.scrollTop = r * (en.scrollHeight - en.clientHeight);
-    }
-
+    syncEnToRu(ru, en);
     // Update progress bar from EN position
     const enScrollable = en.scrollHeight - en.clientHeight;
     setScrollPct(enScrollable > 0 ? Math.min(1, en.scrollTop / enScrollable) : 0);
