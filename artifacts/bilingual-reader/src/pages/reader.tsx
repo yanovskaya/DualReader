@@ -12,8 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Loader2, ArrowLeft, X, Settings2 } from "lucide-react";
-import { BookParagraph, type SelectedToken } from "@/components/book-paragraph";
-import { splitSentences } from "@/lib/sentences";
+import { BookParagraph } from "@/components/book-paragraph";
 import {
   useReaderSettings,
   THEMES,
@@ -39,75 +38,11 @@ function batchKey(id: number) { return `lingua_batch_${id}`; }
 function getSaved(id: number) { try { return Math.max(1, parseInt(localStorage.getItem(batchKey(id)) || "1") || 1); } catch { return 1; } }
 function saveBatch(id: number, p: number) { try { localStorage.setItem(batchKey(id), String(p)); } catch {} }
 
-function ruSentenceAt(text: string | null | undefined, idx: number) {
-  if (!text) return null;
-  const s = splitSentences(text);
-  return s[Math.min(idx, s.length - 1)] ?? null;
-}
-
 function timeLeft(remaining: number) {
   const m = Math.round(remaining * AVG_WORDS_PER_PARA / WORDS_PER_MINUTE);
   if (m < 1) return "< 1 мин";
   if (m < 60) return `~${m} мин`;
   return `~${Math.round(m / 60)} ч`;
-}
-
-// ── Sentence with highlighted Russian word ────────────────────────────────────
-function SentenceHighlight({ word, sentence, translatedText, colors }: {
-  word: string; sentence: string; translatedText?: string | null; colors: ThemeColors;
-}) {
-  const clean = word.toLowerCase().replace(/[^\w-]/g, "");
-  const { data: entry } = useLookupWord(
-    { params: { word: clean } },
-    { query: { enabled: !!clean, queryKey: getLookupWordQueryKey({ word: clean }) } }
-  );
-  const translations = entry?.translations ?? [];
-
-  function highlighted(text: string) {
-    for (const t of translations) {
-      const candidates = [t, ...t.split(/[\s,;]+/).filter(w => w.length > 3)];
-      for (const c of candidates) {
-        const lc = text.toLowerCase();
-        const idx = lc.indexOf(c.toLowerCase());
-        if (idx !== -1) {
-          return (
-            <>
-              {text.slice(0, idx)}
-              <mark style={{ background: "#86efac", color: "#14532d", borderRadius: 3, padding: "0 2px" }}>
-                {text.slice(idx, idx + c.length)}
-              </mark>
-              {text.slice(idx + c.length)}
-            </>
-          );
-        }
-      }
-    }
-    return <>{text}</>;
-  }
-
-  const ruSentences = splitSentences(translatedText || "");
-  const showFull = ruSentences.length > 1;
-
-  return (
-    <div>
-      {translations.length > 0 && (
-        <div style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-          <span style={{ fontWeight: 700, color: colors.text }}>{word}</span>
-          {" — "}
-          {translations.slice(0, 5).join(", ")}
-        </div>
-      )}
-      <div style={{ fontSize: 15, fontFamily: "Georgia, serif", color: colors.text, lineHeight: "1.7" }}>
-        <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: colors.accent, marginRight: 7, verticalAlign: "middle" }} />
-        {highlighted(sentence)}
-      </div>
-      {showFull && translatedText && (
-        <div style={{ marginTop: 6, fontSize: 13, color: colors.muted, fontFamily: "Georgia, serif", lineHeight: "1.6", paddingLeft: 15, borderLeft: `2px solid ${colors.border}` }}>
-          {translatedText}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Dictionary entry ──────────────────────────────────────────────────────────
@@ -245,11 +180,9 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
   );
 }
 
-// ── Translation bottom drawer ─────────────────────────────────────────────────
+// ── Translation bottom drawer — only dictionary now ───────────────────────────
 type PanelState =
   | { kind: "hidden" }
-  | { kind: "paragraph"; paragraph: Paragraph }
-  | { kind: "sentence"; word: string; sentence: string; paragraph: Paragraph }
   | { kind: "dict"; word: string; paragraph: Paragraph };
 
 function TranslationDrawer({ panel, colors, onClose }: {
@@ -277,21 +210,6 @@ function TranslationDrawer({ panel, colors, onClose }: {
           <X size={16} />
         </button>
       </div>
-      {panel.kind === "paragraph" && (
-        panel.paragraph.isTranslated && panel.paragraph.translatedText ? (
-          <div style={{ fontSize: 16, fontFamily: "Georgia, serif", color: colors.text, lineHeight: "1.75" }}>
-            {panel.paragraph.translatedText}
-          </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: colors.muted, fontStyle: "italic" }}>
-            <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-            Перевод ещё не готов…
-          </div>
-        )
-      )}
-      {panel.kind === "sentence" && (
-        <SentenceHighlight word={panel.word} sentence={panel.sentence} translatedText={panel.paragraph.translatedText} colors={colors} />
-      )}
       {panel.kind === "dict" && (
         <WordDict word={panel.word} context={panel.paragraph.originalText} colors={colors} />
       )}
@@ -314,7 +232,8 @@ export default function ReaderPage() {
   const [totalScreenPages, setTotalScreenPages] = useState(1);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
-  const [selectedToken, setSelectedToken] = useState<SelectedToken | null>(null);
+  // Paragraphs whose Russian translation is visible inline
+  const [visibleTranslations, setVisibleTranslations] = useState<Set<number>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
   const [headerVisible, setHeaderVisible] = useState(true);
 
@@ -397,7 +316,7 @@ export default function ReaderPage() {
     const t1 = setTimeout(measure, 80);
     const t2 = setTimeout(measure, 350); // re-measure after fonts load
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [paragraphsData, settings.fontSize, settings.lineSpacing, settings.margin, settings.fontFamily, measure]);
+  }, [paragraphsData, settings.fontSize, settings.lineSpacing, settings.margin, settings.fontFamily, measure, visibleTranslations]);
 
   // Also re-measure on resize
   useEffect(() => {
@@ -420,7 +339,6 @@ export default function ReaderPage() {
         setBatch(nextBatch);
         saveBatch(bookId, nextBatch);
         setPanel({ kind: "hidden" });
-        setSelectedToken(null);
         return 0;
       }
       return sp; // already at the very end
@@ -437,7 +355,6 @@ export default function ReaderPage() {
         setBatch(prevBatch);
         saveBatch(bookId, prevBatch);
         setPanel({ kind: "hidden" });
-        setSelectedToken(null);
       }
       return sp;
     });
@@ -478,28 +395,21 @@ export default function ReaderPage() {
   }, [panel.kind, goNextScreen, goPrevScreen]);
 
   // ── Word / paragraph interaction ─────────────────────────────────────────
-  const handleParagraphClick = useCallback((p: Paragraph) => {
-    setSelectedToken(null);
-    setPanel(prev => prev.kind !== "hidden" && prev.paragraph.id === p.id ? { kind: "hidden" } : { kind: "paragraph", paragraph: p });
-    setShowSettings(false);
-  }, []);
-
-  const handleWordClick = useCallback((word: string, sentenceIdx: number, charStart: number, p: Paragraph) => {
-    setSelectedToken({ paragraphId: p.id, charStart, word });
-    const sentence = ruSentenceAt(p.translatedText, sentenceIdx);
-    setPanel(sentence ? { kind: "sentence", word, sentence, paragraph: p } : { kind: "paragraph", paragraph: p });
-    setShowSettings(false);
-  }, []);
-
   const handleWordDoubleClick = useCallback((word: string, p: Paragraph) => {
-    setSelectedToken(null);
     setPanel({ kind: "dict", word, paragraph: p });
     setShowSettings(false);
   }, []);
 
+  const toggleTranslation = useCallback((id: number) => {
+    setVisibleTranslations(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
   const closePanel = useCallback(() => {
     setPanel({ kind: "hidden" });
-    setSelectedToken(null);
   }, []);
 
   // ── Progress ──────────────────────────────────────────────────────────────
@@ -608,9 +518,8 @@ export default function ReaderPage() {
               <BookParagraph
                 key={p.id}
                 paragraph={p}
-                selectedToken={selectedToken}
-                onClick={handleParagraphClick}
-                onWordClick={handleWordClick}
+                showTranslation={visibleTranslations.has(p.id)}
+                onToggleTranslation={() => toggleTranslation(p.id)}
                 onWordDoubleClick={handleWordDoubleClick}
                 colors={colors}
                 fontSize={settings.fontSize}
