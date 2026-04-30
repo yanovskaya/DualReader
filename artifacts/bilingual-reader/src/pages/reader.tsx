@@ -210,6 +210,8 @@ export default function ReaderPage() {
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
+  // Global toggle: show or hide Russian translations
+  const [showTranslations, setShowTranslations] = useState(true);
 
   // Scroll ref for progress tracking
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -320,7 +322,7 @@ export default function ReaderPage() {
     );
   }
 
-  const HEADER_H = 88; // px — two-row header
+  const HEADER_H = 84; // px — two-row header (50 nav + 34 progress/toggle)
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text }}>
@@ -358,20 +360,28 @@ export default function ReaderPage() {
           </button>
         </div>
 
-        {/* Row 2: progress bar + column labels */}
-        <div style={{ height: 38, borderTop: `1px solid ${colors.border}`, display: "flex", alignItems: "stretch" }}>
-          {/* Progress bar underlay */}
-          <div style={{ position: "absolute", bottom: 0, left: 0, height: 2, width: `${scrollPct * 100}%`, background: colors.accent, transition: "width 0.2s" }} />
-          {/* EN label */}
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.muted, opacity: 0.7 }}>EN</span>
+        {/* Row 2: progress bar + RU toggle */}
+        <div style={{ height: 34, borderTop: `1px solid ${colors.border}`, display: "flex", alignItems: "center", padding: "0 16px", gap: 10, position: "relative" }}>
+          {/* Progress bar at bottom of row */}
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: colors.border }}>
+            <div style={{ width: `${scrollPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
           </div>
-          {/* Divider */}
-          <div style={{ width: 1, background: colors.border }} />
-          {/* RU label */}
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.accent, opacity: 0.8 }}>RU</span>
-          </div>
+          <span style={{ fontSize: 11, color: colors.muted, flex: 1 }}>Перевод</span>
+          <button
+            onClick={() => setShowTranslations(v => !v)}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "3px 10px", borderRadius: 12,
+              border: `1.5px solid ${showTranslations ? colors.accent : colors.border}`,
+              background: showTranslations ? colors.accent + "18" : "transparent",
+              color: showTranslations ? colors.accent : colors.muted,
+              fontSize: 12, fontWeight: 600, cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+          >
+            <span style={{ fontSize: 14 }}>{showTranslations ? "▾" : "▸"}</span>
+            {showTranslations ? "Скрыть" : "Показать"}
+          </button>
         </div>
       </header>
 
@@ -381,6 +391,7 @@ export default function ReaderPage() {
         style={{
           flex: 1,
           overflowY: "auto",
+          overflowX: "hidden",
           paddingTop: HEADER_H,
           WebkitOverflowScrolling: "touch" as never,
         }}
@@ -396,6 +407,7 @@ export default function ReaderPage() {
           <BookParagraph
             key={p.id}
             paragraph={p}
+            showTranslation={showTranslations}
             onWordDoubleClick={handleWordDoubleClick}
             colors={colors}
             fontSize={settings.fontSize}
