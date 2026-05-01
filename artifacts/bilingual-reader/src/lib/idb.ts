@@ -142,6 +142,15 @@ export async function loadBook(bookId: number): Promise<CachedBook | null> {
   });
 }
 
+export async function loadAllBooks(): Promise<CachedBook[]> {
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const req = tx(db, STORE_BOOKS, "readonly").getAll();
+    req.onsuccess = () => resolve((req.result as CachedBook[]) ?? []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 /** Delete all cached data for a book */
 export async function deleteBookCache(bookId: number): Promise<void> {
   const db = await open();

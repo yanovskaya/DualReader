@@ -11,6 +11,8 @@ import {
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
 import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
+import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
+import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
@@ -395,9 +397,38 @@ export default function ReaderPage() {
   // Sentinel div at the bottom of the EN panel to trigger next batch load
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const { data: book, isLoading: isLoadingBook } = useGetBook(bookId, {
+  const { data: bookOnline, isLoading: isLoadingBookOnline } = useGetBook(bookId, {
     query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
   });
+
+  // Offline fallback: load book metadata from IDB when network is unavailable
+  const [offlineBook, setOfflineBook] = useState<CachedBook | null>(null);
+  const [isLoadingOfflineBook, setIsLoadingOfflineBook] = useState(false);
+
+  useEffect(() => {
+    if (!bookId || isLoadingBookOnline || bookOnline) return;
+    // Network fetch finished with no result → try IDB
+    setIsLoadingOfflineBook(true);
+    loadBook(bookId).then(b => { setOfflineBook(b); setIsLoadingOfflineBook(false); }).catch(() => setIsLoadingOfflineBook(false));
+  }, [bookId, isLoadingBookOnline, bookOnline]);
+
+  // Persist book metadata to IDB whenever we get it from network
+  useEffect(() => {
+    if (!bookOnline) return;
+    saveBook({
+      id: bookOnline.id,
+      title: bookOnline.title,
+      author: bookOnline.author ?? null,
+      language: bookOnline.language ?? "en",
+      totalParagraphs: bookOnline.totalParagraphs ?? 0,
+      translatedParagraphs: bookOnline.translatedParagraphs ?? 0,
+      translationStatus: bookOnline.translationStatus ?? "pending",
+      cachedAt: Date.now(),
+    }).catch(() => {});
+  }, [bookOnline]);
+
+  const book = bookOnline ?? offlineBook;
+  const isLoadingBook = isLoadingBookOnline || isLoadingOfflineBook;
 
   const { data: paragraphsData, isSuccess } = useParagraphsOffline(
     bookId,
@@ -407,15 +438,46 @@ export default function ReaderPage() {
 
   const { data: statusData } = useGetTranslationStatus(bookId, {
     query: {
-      enabled: !!bookId,
+      enabled: !!bookId && !!bookOnline, // skip when offline
       refetchInterval: 5000,
       queryKey: getGetTranslationStatusQueryKey(bookId),
     },
   });
 
   const { data: chaptersData } = useGetBookChapters(bookId, {
-    query: { enabled: !!bookId, queryKey: getGetBookChaptersQueryKey(bookId) },
+    query: { enabled: !!bookId && !!bookOnline, queryKey: getGetBookChaptersQueryKey(bookId) },
   });
+
+  // Background prefetch ALL paragraph batches for offline use
+  // Runs once when book metadata arrives while we're online
+  useEffect(() => {
+    if (!bookOnline || !bookId) return;
+    const totalPages = Math.ceil((bookOnline.totalParagraphs ?? 0) / PAGE_SIZE);
+    if (totalPages <= 0) return;
+
+    // Fetch pages sequentially in the background, skipping the current one
+    // (already being loaded by useParagraphsOffline)
+    let active = true;
+    const prefetch = async () => {
+      for (let page = 1; page <= totalPages && active; page++) {
+        if (page === currentBatch) continue; // already loading
+        try {
+          const res = await fetch(`/api/books/${bookId}/paragraphs?page=${page}&pageSize=${PAGE_SIZE}`);
+          if (!res.ok || !active) continue;
+          const data = await res.json();
+          await saveParagraphPage(bookId, page, data);
+        } catch {
+          // silently skip — network may be gone mid-prefetch
+        }
+        // Yield between pages to avoid blocking the main thread
+        await new Promise(r => setTimeout(r, 200));
+      }
+    };
+    prefetch();
+    return () => { active = false; };
+  // Only re-run if book or bookId changes (NOT currentBatch — don't restart on scroll)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookOnline?.id, bookId]);
 
   // Accumulate paragraphs as batches load
   useEffect(() => {

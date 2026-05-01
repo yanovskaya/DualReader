@@ -66,8 +66,8 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         runtimeCaching: [
           {
-            // Paragraphs are immutable once translated — cache aggressively for offline reading
-            urlPattern: /^\/api\/books\/\d+\/paragraphs(\?.*)?$/,
+            // Paragraphs — CacheFirst; primary offline mechanism is IDB but SW adds another layer
+            urlPattern: /\/api\/books\/\d+\/paragraphs(\?.*)?$/,
             handler: "CacheFirst",
             options: {
               cacheName: "paragraphs-cache",
@@ -79,8 +79,8 @@ export default defineConfig({
             },
           },
           {
-            // Book metadata — network first, fall back to cache
-            urlPattern: /^\/api\/books\/\d+(\/translation-status|\/search)?(\?.*)?$/,
+            // Book metadata — NetworkFirst with IDB fallback handled in app code
+            urlPattern: /\/api\/books\/\d+(\/translation-status|\/chapters|\/search)?(\?.*)?$/,
             handler: "NetworkFirst",
             options: {
               cacheName: "books-cache",
@@ -93,8 +93,8 @@ export default defineConfig({
             },
           },
           {
-            // Dictionary lookups — network first
-            urlPattern: /^\/api\/dictionary\/lookup/,
+            // Dictionary lookups — NetworkFirst, cached for repeated offline lookups
+            urlPattern: /\/api\/dictionary\/lookup/,
             handler: "NetworkFirst",
             options: {
               cacheName: "dict-cache",

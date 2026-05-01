@@ -1,25 +1,54 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useListBooks, getListBooksQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { BookCard } from "@/components/book-card";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation, useSearch } from "wouter";
-import { Plus, BookOpen } from "lucide-react";
+import { Plus, BookOpen, WifiOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLastBook } from "@/hooks/use-reading-progress";
+import { saveBook, loadAllBooks } from "@/lib/idb";
+import type { CachedBook } from "@/lib/idb";
 
 export default function Home() {
-  const { data: books, isLoading } = useListBooks({
+  const { data: booksOnline, isLoading: isLoadingOnline, isError } = useListBooks({
     query: { queryKey: getListBooksQueryKey() }
   });
+  const [offlineBooks, setOfflineBooks] = useState<CachedBook[]>([]);
   const [, navigate] = useLocation();
-  const search = useSearch(); // e.g. "back=1" when coming from reader
-
-  // Auto-navigate only on fresh app open (not when user pressed ← from reader)
+  const search = useSearch();
   const cameFromReader = search.includes("back=1");
 
+  // Save books to IDB whenever we get a fresh list from the network
   useEffect(() => {
-    if (cameFromReader) return;        // user deliberately went to library
+    if (!booksOnline) return;
+    for (const b of booksOnline) {
+      saveBook({
+        id: b.id,
+        title: b.title,
+        author: b.author ?? null,
+        language: b.language ?? "en",
+        totalParagraphs: b.totalParagraphs ?? 0,
+        translatedParagraphs: b.translatedParagraphs ?? 0,
+        translationStatus: b.translationStatus ?? "pending",
+        cachedAt: Date.now(),
+      }).catch(() => {});
+    }
+  }, [booksOnline]);
+
+  // Load offline books from IDB when network fails
+  useEffect(() => {
+    if (!isError && !(!isLoadingOnline && !booksOnline)) return;
+    loadAllBooks().then(setOfflineBooks).catch(() => {});
+  }, [isError, isLoadingOnline, booksOnline]);
+
+  const books = booksOnline ?? (offlineBooks.length > 0 ? offlineBooks : undefined);
+  const isLoading = isLoadingOnline && !offlineBooks.length;
+  const isOffline = !booksOnline && offlineBooks.length > 0;
+
+  // Auto-navigate only on fresh app open (not when user pressed ← from reader)
+  useEffect(() => {
+    if (cameFromReader) return;
     if (isLoading || !books) return;
     if (books.length === 0) return;
 
@@ -41,15 +70,26 @@ export default function Home() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-10 border-b border-border/40 pb-6">
           <div>
             <h1 className="text-4xl font-serif font-bold text-primary mb-2">Библиотека</h1>
-            <p className="text-muted-foreground text-lg">Продолжить чтение с последнего места.</p>
+            <p className="text-muted-foreground text-lg">
+              Продолжить чтение с последнего места.
+            </p>
           </div>
-          <Button asChild size="lg" className="shadow-sm font-medium">
-            <Link href="/upload" className="flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Добавить книгу
-            </Link>
-          </Button>
+          {!isOffline && (
+            <Button asChild size="lg" className="shadow-sm font-medium">
+              <Link href="/upload" className="flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                Добавить книгу
+              </Link>
+            </Button>
+          )}
         </div>
+
+        {isOffline && (
+          <div className="flex items-center gap-2 mb-6 text-sm text-muted-foreground bg-muted/40 rounded-lg px-4 py-2">
+            <WifiOff className="h-4 w-4 shrink-0" />
+            <span>Нет соединения. Показаны книги из кеша — читать можно оффлайн.</span>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -66,8 +106,9 @@ export default function Home() {
           </div>
         ) : books && books.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             {books.map(book => (
-              <BookCard key={book.id} book={book} />
+              <BookCard key={book.id} book={book as any} />
             ))}
           </div>
         ) : (
