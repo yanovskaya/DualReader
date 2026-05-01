@@ -31,7 +31,6 @@ export function BookParagraph({
   textAlign = "left",
 }: BookParagraphProps) {
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clickCount = useRef(0);
 
   const text = paragraph.originalText;
   const isHeading = isHeadingParagraph(text);
@@ -106,20 +105,18 @@ export function BookParagraph({
 
   const handleWordTap = useCallback(
     (word: string, wordCharOffset: number) => {
-      clickCount.current += 1;
-      if (clickCount.current === 1) {
-        // Fire single-tap action IMMEDIATELY — no lag
-        const sentenceIdx = sentenceIdxForCharPos(paragraph.originalText, wordCharOffset);
-        onWordClick?.(paragraph, sentenceIdx);
-        // Start window to detect a follow-up double-tap
-        clickTimer.current = setTimeout(() => {
-          clickCount.current = 0;
-        }, 500);
-      } else {
-        // Second tap within 350 ms → double-tap: open dictionary
-        if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
-        clickCount.current = 0;
+      if (clickTimer.current) {
+        // Second tap arrived before timer fired → double-tap → open dictionary immediately
+        clearTimeout(clickTimer.current);
+        clickTimer.current = null;
         onWordDoubleClick?.(word, paragraph);
+      } else {
+        // First tap: wait 300 ms to confirm it is a single-tap (not the start of a double-tap)
+        clickTimer.current = setTimeout(() => {
+          clickTimer.current = null;
+          const sentenceIdx = sentenceIdxForCharPos(paragraph.originalText, wordCharOffset);
+          onWordClick?.(paragraph, sentenceIdx);
+        }, 300);
       }
     },
     [paragraph, onWordClick, onWordDoubleClick]

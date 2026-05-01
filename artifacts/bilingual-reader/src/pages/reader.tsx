@@ -291,11 +291,8 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   if (panel.kind === "hidden") return null;
   return (
     <>
-      {/* Backdrop — tap anywhere outside to close (transparent, no dimming) */}
-      <div
-        onClick={onClose}
-        style={{ position: "fixed", inset: 0, zIndex: 39 }}
-      />
+      {/* No full-screen backdrop — it would block scroll events on EN/RU panels.
+          Closing is handled by onClick on EN/RU panels and the ✕ button. */}
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
         background: colors.drawerBg, borderRadius: "18px 18px 0 0",
@@ -893,6 +890,7 @@ export default function ReaderPage() {
             <div
               ref={ruRef}
               onScroll={handleRuScroll}
+              onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
               style={{
                 flex: 3.75,
                 overflowY: "auto",
