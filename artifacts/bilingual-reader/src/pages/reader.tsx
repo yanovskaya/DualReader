@@ -386,6 +386,8 @@ export default function ReaderPage() {
   // so handleRuScroll ignores the resulting scroll event.
   const syncLock = useRef(false);
   const syncLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // rAF handle so RU sync fires at most once per animation frame
+  const syncRafRef = useRef<number | null>(null);
 
   const scrollPctRef = useRef(0);
   const [scrollPct, setScrollPct] = useState(0);
@@ -523,6 +525,7 @@ export default function ReaderPage() {
   // Navigate to a chapter: load enough batches, then scroll to the paragraph element
   const navigateToChapter = useCallback((paragraphId: number, position: number) => {
     const neededBatch = Math.ceil((position + 1) / PAGE_SIZE);
+    ruOffset.current = 0; // reset any manual offset so RU syncs cleanly after navigation
     setPendingScrollId(paragraphId);
     setCurrentBatch(prev => Math.max(prev, neededBatch));
   }, []);
@@ -602,22 +605,22 @@ export default function ReaderPage() {
     }, 800);
   }, [bookId, currentBatch]);
 
-  // ── Lock helper: prevents RU scroll events from overwriting ruOffset
+  // ── Lock helper: prevents RU scroll listener from overwriting ruOffset
   //    while WE are programmatically setting ru.scrollTop ─────────────────────
   const lockSync = useCallback(() => {
     syncLock.current = true;
     if (syncLockTimer.current) clearTimeout(syncLockTimer.current);
-    // 80 ms covers browser scroll-event delivery on all platforms
-    syncLockTimer.current = setTimeout(() => { syncLock.current = false; }, 80);
+    // 120 ms covers scroll-event delivery even on slow/busy mobile CPUs
+    syncLockTimer.current = setTimeout(() => { syncLock.current = false; }, 120);
   }, []);
 
-  // ── EN panel scroll → drive RU proportionally + stored offset ────────────
+  // ── EN scroll handler: throttled via rAF so RU is updated at most once per frame
+  // This prevents the 60+ DOM writes/second that were overheating mobile devices.
   const handleEnScroll = useCallback(() => {
     const en = enRef.current;
-    const ru = ruRef.current;
-    if (!en || !ru) return;
+    if (!en) return;
 
-    // Update progress (throttled to ≤ 6 re-renders/s)
+    // Progress tracking (throttled to ≤ 6 re-renders/s)
     const scrollable = en.scrollHeight - en.clientHeight;
     const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
     scrollPctRef.current = ratio;
@@ -629,18 +632,28 @@ export default function ReaderPage() {
     }
     saveProgressDebounced(ratio);
 
-    // Move RU: proportional position + remembered offset
-    lockSync();
-    ru.scrollTop = clampRu(ru, proportionalRuPos(en, ru) + ruOffset.current);
+    // Schedule RU sync at most ONCE per animation frame.
+    // If a frame is already scheduled, skip — it will read the latest scrollTop.
+    if (syncRafRef.current !== null) return;
+    syncRafRef.current = requestAnimationFrame(() => {
+      syncRafRef.current = null;
+      const e = enRef.current;
+      const r = ruRef.current;
+      if (!e || !r) return;
+      const target = clampRu(r, proportionalRuPos(e, r) + ruOffset.current);
+      // Skip the write if already within 1px — avoids a needless browser repaint
+      if (Math.abs(r.scrollTop - target) <= 1) return;
+      lockSync();
+      r.scrollTop = target;
+    });
   }, [lockSync, saveProgressDebounced]);
 
-  // ── RU panel scroll → only fires on genuine user gesture ─────────────────
+  // ── RU scroll handler: records manual offset; ignores programmatic scrolls ──
   const handleRuScroll = useCallback(() => {
-    if (syncLock.current) return; // ignore events we caused ourselves
+    if (syncLock.current) return; // ignore echo events caused by our own ru.scrollTop writes
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    // Remember how far the user moved RU away from proportional position
     ruOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
   }, []);
 
