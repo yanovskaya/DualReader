@@ -433,10 +433,11 @@ export default function ReaderPage() {
   // ruOffset: how many px RU deviates from paragraph-synced position.
   // Set by: manual RU scroll, or word click. Persists across EN scroll events.
   const ruOffset = useRef(0);
-  // syncLock: true while WE are programmatically setting ru.scrollTop,
-  // so handleRuScroll ignores the resulting scroll event.
-  const syncLock = useRef(false);
-  const syncLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // lastProgRuWrite: performance.now() timestamp of the last time WE wrote
+  // ru.scrollTop programmatically. handleRuScroll ignores scroll events that
+  // fire within 100ms of such a write (they are echoes, not manual scrolls).
+  // Using a timestamp avoids clearTimeout/setTimeout churn on every EN scroll event.
+  const lastProgRuWrite = useRef(0);
   // Cached paragraph positions (EN + RU offsets). Rebuilt after each render
   // that changes paragraph layout. Used by paragraphSync() in the scroll hot path.
   const paraPositions = useRef<ParaPos[]>([]);
@@ -690,20 +691,8 @@ export default function ReaderPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayParagraphs, settings.fontSize, settings.fontFamily, settings.lineSpacing, showTranslations, book]);
 
-  // ── Lock helper: prevents RU scroll listener from overwriting ruOffset
-  //    while WE are programmatically setting ru.scrollTop ─────────────────────
-  const lockSync = useCallback(() => {
-    syncLock.current = true;
-    if (syncLockTimer.current) clearTimeout(syncLockTimer.current);
-    // 120 ms covers scroll-event delivery even on slow/busy mobile CPUs
-    syncLockTimer.current = setTimeout(() => { syncLock.current = false; }, 120);
-  }, []);
 
   // ── EN scroll handler: syncs RU synchronously (same frame) for visual smoothness ──
-  // Key perf fix: we do NOT call lockSync() here. The RU echo event recalculates
-  // ruOffset to the same value (paragraphSync + ruOffset - paragraphSync = ruOffset),
-  // so it causes zero drift. Removing lockSync() eliminates the clearTimeout+setTimeout
-  // churn (120+ timer ops/sec on mobile) that was the main cause of overheating.
   const handleEnScroll = useCallback(() => {
     const en = enRef.current;
     if (!en) return;
@@ -726,13 +715,19 @@ export default function ReaderPage() {
     if (!r) return;
     const target = clampRu(r, paragraphSync(en, r, paraPositions.current) + ruOffset.current);
     if (r.scrollTop === target) return;
+    // Stamp before writing so handleRuScroll treats this as a programmatic echo.
+    lastProgRuWrite.current = performance.now();
     r.scrollTop = target;
-    // No lockSync() needed: echo from RU scroll event recomputes ruOffset identically.
   }, [saveProgressDebounced]);
 
-  // ── RU scroll handler: records manual offset; ignores programmatic scrolls ──
+  // ── RU scroll handler: records manual offset; ignores programmatic echoes ──
   const handleRuScroll = useCallback(() => {
-    if (syncLock.current) return; // ignore echo events caused by our own ru.scrollTop writes
+    // Ignore scroll events that are echoes of our own programmatic ru.scrollTop
+    // writes. We compare against a timestamp because a timer-based lock would
+    // require clearTimeout+setTimeout on every EN scroll event (120+/sec on
+    // high-refresh mobile), causing unnecessary CPU load. 100ms covers any
+    // delayed scroll-event delivery on slow/busy mobile CPUs.
+    if (performance.now() - lastProgRuWrite.current < 100) return;
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
@@ -765,9 +760,9 @@ export default function ReaderPage() {
       ru.querySelector<HTMLElement>(`[data-ru-sentence="${p.id}-${sentenceIdx}"]`) ??
       ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
     if (!el) return;
-    lockSync();
     // Bring the target to the top of the RU panel
     const delta = el.getBoundingClientRect().top - ru.getBoundingClientRect().top;
+    lastProgRuWrite.current = performance.now(); // stamp before write
     ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
     // Only record the offset when paragraph positions are ready.
     // If positions are empty the fallback is proportional, which gives a wrong
@@ -775,7 +770,7 @@ export default function ReaderPage() {
     if (paraPositions.current.length > 0) {
       ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
     }
-  }, [lockSync]);
+  }, []);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
 
