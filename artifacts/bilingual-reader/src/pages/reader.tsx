@@ -16,7 +16,7 @@ import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
-import { isHeadingParagraph } from "@/lib/sentences";
+import { isHeadingParagraph, splitSentences } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
 import { SearchPanel } from "@/components/search-panel";
 import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
@@ -343,14 +343,21 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
 }
 
 // ── Scroll sync helpers ────────────────────────────────────────────────────────
-// Per-paragraph DOM positions used for paragraph-fraction sync.
-// Each entry maps one EN paragraph element's scroll range to the matching RU element.
+// Per-paragraph DOM positions used for sentence-level sync.
+// Sentence char offsets allow mapping EN char-position → EN sentence → RU sentence
+// without any additional DOM queries on the scroll hot path.
 interface ParaPos {
   id: number;
-  enTop: number;    // offsetTop within EN scroll container
-  enBottom: number; // enTop + offsetHeight
-  ruTop: number;    // offsetTop within RU scroll container
-  ruBottom: number; // ruTop + offsetHeight
+  enTop: number;      // offsetTop within EN scroll container
+  enBottom: number;   // enTop + offsetHeight
+  ruTop: number;      // offsetTop within RU scroll container
+  ruBottom: number;   // ruTop + offsetHeight
+  // Cumulative char offsets at the START of each sentence (index 0 is always 0).
+  // Both arrays have the same length (one entry per sentence pair).
+  enSentenceStarts: number[];
+  ruSentenceStarts: number[];
+  enTotalChars: number;
+  ruTotalChars: number;
 }
 
 // Measure element's top offset relative to a scroll container.
@@ -358,8 +365,21 @@ function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
   return el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
 }
 
-// Compute the RU scroll target that keeps the same fractional position
-// within the paragraph currently visible at the top of the EN panel.
+// Build cumulative char-start offsets for each sentence.
+// e.g. sentences ["Hello world.", "Bye."] → [0, 13]
+function sentenceCharStarts(sentences: string[]): number[] {
+  const starts: number[] = [];
+  let pos = 0;
+  for (const s of sentences) {
+    starts.push(pos);
+    pos += s.length + 1; // +1 for the space separator
+  }
+  return starts;
+}
+
+// Compute the RU scroll target that keeps the same sentence visible at the top
+// of both panels. Uses sentence-level char mapping so EN/RU char-count differences
+// don't cause drift within long paragraphs.
 // Falls back to proportional when no paragraph data is available.
 function paragraphSync(
   en: HTMLElement,
@@ -374,8 +394,6 @@ function paragraphSync(
 
   const enTop = en.scrollTop;
   // Find the last paragraph whose enTop <= scroll position (binary search).
-  // That paragraph "contains" the current view — even if the view is past its enBottom
-  // (which can happen at the boundary between two paragraphs).
   let lo = 0, hi = positions.length - 1, idx = 0;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
@@ -384,10 +402,50 @@ function paragraphSync(
   }
   const p = positions[idx];
   const enSpan = p.enBottom - p.enTop;
-  const fraction = enSpan > 0 ? Math.max(0, Math.min(1, (enTop - p.enTop) / enSpan)) : 0;
   const ruSpan = p.ruBottom - p.ruTop;
-  const result = p.ruTop + fraction * ruSpan;
-  return result;
+
+  // Sentence-level mapping ──────────────────────────────────────────────────
+  // 1. Convert EN pixel offset to approximate EN char position.
+  const fraction = enSpan > 0 ? Math.max(0, Math.min(1, (enTop - p.enTop) / enSpan)) : 0;
+  if (
+    p.enSentenceStarts.length > 1 &&
+    p.ruSentenceStarts.length > 1 &&
+    p.enTotalChars > 0 &&
+    p.ruTotalChars > 0
+  ) {
+    const enChar = fraction * p.enTotalChars;
+
+    // 2. Binary-search for the EN sentence containing enChar.
+    let sLo = 0, sHi = p.enSentenceStarts.length - 1, sIdx = 0;
+    while (sLo <= sHi) {
+      const sMid = (sLo + sHi) >> 1;
+      if (p.enSentenceStarts[sMid] <= enChar) { sIdx = sMid; sLo = sMid + 1; }
+      else { sHi = sMid - 1; }
+    }
+
+    // 3. Fraction within that EN sentence.
+    const enSentStart = p.enSentenceStarts[sIdx];
+    const enSentEnd = sIdx < p.enSentenceStarts.length - 1
+      ? p.enSentenceStarts[sIdx + 1]
+      : p.enTotalChars;
+    const sFrac = enSentEnd > enSentStart
+      ? (enChar - enSentStart) / (enSentEnd - enSentStart)
+      : 0;
+
+    // 4. Map to the same sentence index in RU (clamped to available sentences).
+    const ruSIdx = Math.min(sIdx, p.ruSentenceStarts.length - 1);
+    const ruSentStart = p.ruSentenceStarts[ruSIdx];
+    const ruSentEnd = ruSIdx < p.ruSentenceStarts.length - 1
+      ? p.ruSentenceStarts[ruSIdx + 1]
+      : p.ruTotalChars;
+
+    // 5. RU char position → RU pixel position.
+    const ruChar = ruSentStart + sFrac * (ruSentEnd - ruSentStart);
+    return p.ruTop + (ruChar / p.ruTotalChars) * ruSpan;
+  }
+
+  // Fallback: simple paragraph-fraction sync (paragraphs with no translation yet).
+  return p.ruTop + fraction * ruSpan;
 }
 
 function clampRu(ru: HTMLElement, pos: number): number {
@@ -675,12 +733,19 @@ export default function ReaderPage() {
         if (!enEl || !ruEl) continue;
         const enT = offsetInContainer(enEl, en);
         const ruT = offsetInContainer(ruEl, ru);
+        // Build sentence char-start arrays for sentence-level sync.
+        const enSents = splitSentences(p.originalText);
+        const ruSents = p.translatedText ? splitSentences(p.translatedText) : [];
         positions.push({
           id: p.id,
           enTop: enT,
           enBottom: enT + enEl.offsetHeight,
           ruTop: ruT,
           ruBottom: ruT + ruEl.offsetHeight,
+          enSentenceStarts: sentenceCharStarts(enSents),
+          ruSentenceStarts: sentenceCharStarts(ruSents),
+          enTotalChars: p.originalText.length,
+          ruTotalChars: p.translatedText?.length ?? 0,
         });
       }
       paraPositions.current = positions;
