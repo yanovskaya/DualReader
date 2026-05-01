@@ -1,13 +1,14 @@
 import { useRef, useCallback } from "react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { isHeadingParagraph } from "@/lib/sentences";
+import { isHeadingParagraph, sentenceIdxForCharPos, splitSentences } from "@/lib/sentences";
 import type { TextAlign, ThemeColors } from "@/hooks/use-reader-settings";
 
 export interface BookParagraphProps {
   paragraph: Paragraph;
   /** "en" = only English text (clickable words), "ru" = only Russian translation */
   mode: "en" | "ru";
-  onWordClick?: (p: Paragraph) => void;
+  /** sentenceIdx = which sentence within the paragraph the tapped word belongs to */
+  onWordClick?: (p: Paragraph, sentenceIdx: number) => void;
   onWordDoubleClick?: (word: string, p: Paragraph) => void;
   colors: ThemeColors;
   fontSize: number;
@@ -59,6 +60,10 @@ export function BookParagraph({
       );
     }
 
+    // Split RU text into sentences, each gets a data-ru-sentence anchor
+    // so handleWordClick can scroll to the exact sentence
+    const ruSentences = ruContent ? splitSentences(ruContent) : [];
+
     return (
       <div style={{ padding: "4px 12px", borderBottom: `1px solid ${colors.border}` }}>
         {ruContent ? (
@@ -70,7 +75,12 @@ export function BookParagraph({
             overflowWrap: "break-word",
             textAlign,
           }}>
-            {ruContent}
+            {ruSentences.map((sentence, i) => (
+              <span key={i} data-ru-sentence={`${paragraph.id}-${i}`}>
+                {sentence}
+                {i < ruSentences.length - 1 ? " " : ""}
+              </span>
+            ))}
           </p>
         ) : (
           <p style={{ margin: 0, fontSize, color: colors.border, fontStyle: "italic" }}>…</p>
@@ -81,17 +91,26 @@ export function BookParagraph({
 
   // ── English panel ──────────────────────────────────────────────────────────
   const rawTokens: string[] = text.match(/[\w''\u2019-]+|[^\w\s]+|\s+/g) ?? [];
-  const tokens = rawTokens.map((token: string) => ({
-    token,
-    isWord: /[\w''\u2019-]+/.test(token) && token.trim().length > 0,
-  }));
+
+  // Track each token's character offset in the original text
+  let charOffset = 0;
+  const tokens = rawTokens.map((token: string) => {
+    const offset = charOffset;
+    charOffset += token.length;
+    return {
+      token,
+      charOffset: offset,
+      isWord: /[\w''\u2019-]+/.test(token) && token.trim().length > 0,
+    };
+  });
 
   const handleWordTap = useCallback(
-    (word: string) => {
+    (word: string, wordCharOffset: number) => {
       clickCount.current += 1;
       if (clickCount.current === 1) {
         // Fire single-tap action IMMEDIATELY — no lag
-        onWordClick?.(paragraph);
+        const sentenceIdx = sentenceIdxForCharPos(paragraph.originalText, wordCharOffset);
+        onWordClick?.(paragraph, sentenceIdx);
         // Start window to detect a follow-up double-tap
         clickTimer.current = setTimeout(() => {
           clickCount.current = 0;
@@ -118,13 +137,13 @@ export function BookParagraph({
           color: colors.heading,
           wordBreak: "break-word",
         }}>
-          {tokens.map(({ token, isWord }, i) => {
+          {tokens.map(({ token, isWord, charOffset: co }, i) => {
             if (!isWord) return <span key={i}>{token}</span>;
             const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
             return (
               <span
                 key={i}
-                onClick={e => { e.stopPropagation(); handleWordTap(clean); }}
+                onClick={e => { e.stopPropagation(); handleWordTap(clean, co); }}
                 style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
@@ -147,13 +166,13 @@ export function BookParagraph({
         overflowWrap: "break-word",
         textAlign,
       }}>
-        {tokens.map(({ token, isWord }, i) => {
+        {tokens.map(({ token, isWord, charOffset: co }, i) => {
           if (!isWord) return <span key={i}>{token}</span>;
           const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
           return (
             <span
               key={i}
-              onClick={e => { e.stopPropagation(); handleWordTap(clean); }}
+              onClick={e => { e.stopPropagation(); handleWordTap(clean, co); }}
               style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}

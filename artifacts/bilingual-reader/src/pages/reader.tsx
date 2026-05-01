@@ -334,13 +334,16 @@ function proportionalRuPos(en: HTMLElement, ru: HTMLElement): number {
   return enS > 0 ? (en.scrollTop / enS) * ruS : 0;
 }
 
-// Paragraph-based snap: returns the ru.scrollTop that puts the RU paragraph
-// matching the tapped EN word at the top of the RU panel.
+// Sentence-level snap: scrolls RU so the sentence matching sentenceIdx is at the
+// top of the RU panel. Falls back to paragraph-level if the sentence span isn't found.
 // Only called on word tap — never during continuous scroll.
-function snapRuToEnParagraph(en: HTMLElement, ru: HTMLElement, paraId: number): number | null {
-  const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
-  if (!ruPara) return null;
-  const delta = ruPara.getBoundingClientRect().top - ru.getBoundingClientRect().top;
+function snapRuToSentence(ru: HTMLElement, paraId: number, sentenceIdx: number): number | null {
+  // First try the exact sentence span
+  const sentenceEl = ru.querySelector<HTMLElement>(`[data-ru-sentence="${paraId}-${sentenceIdx}"]`);
+  const target = sentenceEl
+    ?? ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
+  if (!target) return null;
+  const delta = target.getBoundingClientRect().top - ru.getBoundingClientRect().top;
   return ru.scrollTop + delta;
 }
 
@@ -656,20 +659,20 @@ export default function ReaderPage() {
     setShowSettings(false);
   }, []);
 
-  // Single tap on an EN word → snap RU to the matching paragraph
-  const handleWordClick = useCallback((p: Paragraph) => {
+  // Single tap on an EN word → snap RU to the exact matching sentence
+  const handleWordClick = useCallback((p: Paragraph, sentenceIdx: number) => {
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
     // Lock out RU→offset updates while we programmatically scroll
     clearSyncTimer();
     syncSource.current = "en";
-    const snapped = snapRuToEnParagraph(en, ru, p.id);
+    const snapped = snapRuToSentence(ru, p.id, sentenceIdx);
     if (snapped !== null) {
       const ruS = ru.scrollHeight - ru.clientHeight;
       ru.scrollTop = Math.max(0, Math.min(ruS, snapped));
-      // Record how far this paragraph snap deviates from the proportional position,
-      // so subsequent EN scrolls preserve the alignment instead of reverting to ratio.
+      // Record how far this snap deviates from the proportional position
+      // so subsequent EN scrolls preserve the alignment.
       ruManualOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
     }
     syncTimer.current = setTimeout(() => { syncSource.current = null; }, 300);
