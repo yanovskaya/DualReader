@@ -93,7 +93,7 @@ export function BookParagraph({
         clickTimer.current = setTimeout(() => {
           clickCount.current = 0;
           onWordClick?.(paragraph);          // single-tap confirmed
-        }, 280);
+        }, 350);
       } else {
         if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
         clickCount.current = 0;
@@ -122,7 +122,7 @@ export function BookParagraph({
               <span
                 key={i}
                 onClick={e => { e.stopPropagation(); handleWordTap(clean); }}
-                style={{ cursor: "pointer", borderRadius: 2 }}
+                style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
@@ -151,7 +151,7 @@ export function BookParagraph({
             <span
               key={i}
               onClick={e => { e.stopPropagation(); handleWordTap(clean); }}
-              style={{ cursor: "pointer", borderRadius: 2 }}
+              style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
             >

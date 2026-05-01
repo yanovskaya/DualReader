@@ -587,21 +587,27 @@ export default function ReaderPage() {
     setShowSettings(false);
   }, []);
 
-  // Single tap on an EN word → scroll RU to the matching paragraph and reset offset
+  // Single tap on an EN word → scroll RU to the matching paragraph
   const handleWordClick = useCallback((p: Paragraph) => {
     const ru = ruRef.current;
-    if (!ru) return;
+    const en = enRef.current;
+    if (!ru || !en) return;
     const ruPara = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
     if (!ruPara) return;
+    // Lock out RU→offset updates BEFORE changing scrollTop so that neither
+    // the resulting RU scroll event nor any in-flight EN momentum-scroll can
+    // overwrite the offset we are about to compute
+    clearSyncTimer();
+    syncSource.current = "en";
     // Bring the RU paragraph to the top of the RU panel
     const delta = ruPara.getBoundingClientRect().top - ru.getBoundingClientRect().top;
-    clearSyncTimer();
-    syncSource.current = "en"; // prevent handleRuScroll from clobbering the offset
     ru.scrollTop += delta;
-    // Reset manual offset: after a deliberate tap, EN→RU sync should
-    // resume paragraph-aligned with no extra drift
-    ruManualOffset.current = 0;
-    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
+    // Record the offset from the natural paragraph-aligned position so that
+    // future EN scroll events keep RU pinned to this paragraph's translation
+    ruManualOffset.current = ru.scrollTop - paragraphRuPos(en, ru);
+    // Hold the lock briefly so the scroll event that fires from the scrollTop
+    // assignment above doesn't re-read a stale offset
+    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 300);
   }, [clearSyncTimer]);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
