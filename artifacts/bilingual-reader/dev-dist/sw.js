@@ -82,13 +82,13 @@ define(['./workbox-ebf8facd'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.o7mcoif9dqk"
+    "revision": "0.i74ef4643k"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^\/api\/books\/\d+\/paragraphs(\?.*)?$/, new workbox.CacheFirst({
+  workbox.registerRoute(/\/api\/books\/\d+\/paragraphs(\?.*)?$/, new workbox.CacheFirst({
     "cacheName": "paragraphs-cache",
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 2000,
@@ -97,7 +97,7 @@ define(['./workbox-ebf8facd'], (function (workbox) { 'use strict';
       statuses: [0, 200]
     })]
   }), 'GET');
-  workbox.registerRoute(/^\/api\/books\/\d+(\/translation-status|\/search)?(\?.*)?$/, new workbox.NetworkFirst({
+  workbox.registerRoute(/\/api\/books\/\d+(\/translation-status|\/chapters|\/search)?(\?.*)?$/, new workbox.NetworkFirst({
     "cacheName": "books-cache",
     "networkTimeoutSeconds": 8,
     plugins: [new workbox.ExpirationPlugin({
@@ -107,7 +107,7 @@ define(['./workbox-ebf8facd'], (function (workbox) { 'use strict';
       statuses: [0, 200]
     })]
   }), 'GET');
-  workbox.registerRoute(/^\/api\/dictionary\/lookup/, new workbox.NetworkFirst({
+  workbox.registerRoute(/\/api\/dictionary\/lookup/, new workbox.NetworkFirst({
     "cacheName": "dict-cache",
     "networkTimeoutSeconds": 6,
     plugins: [new workbox.ExpirationPlugin({
