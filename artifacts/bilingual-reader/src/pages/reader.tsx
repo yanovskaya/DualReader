@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import {
   useGetBook,
@@ -327,12 +327,51 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
 }
 
 // ── Scroll sync helpers ────────────────────────────────────────────────────────
-// RU scroll target = proportional(en.scrollTop) + ruOffset
-// ruOffset is set by: manual RU scroll or word click.
-function proportionalRuPos(en: HTMLElement, ru: HTMLElement): number {
-  const enS = en.scrollHeight - en.clientHeight;
-  const ruS = ru.scrollHeight - ru.clientHeight;
-  return enS > 0 ? (en.scrollTop / enS) * ruS : 0;
+// Per-paragraph DOM positions used for paragraph-fraction sync.
+// Each entry maps one EN paragraph element's scroll range to the matching RU element.
+interface ParaPos {
+  id: number;
+  enTop: number;    // offsetTop within EN scroll container
+  enBottom: number; // enTop + offsetHeight
+  ruTop: number;    // offsetTop within RU scroll container
+  ruBottom: number; // ruTop + offsetHeight
+}
+
+// Measure element's top offset relative to a scroll container.
+function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
+  return el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+}
+
+// Compute the RU scroll target that keeps the same fractional position
+// within the paragraph currently visible at the top of the EN panel.
+// Falls back to proportional when no paragraph data is available.
+function paragraphSync(
+  en: HTMLElement,
+  ru: HTMLElement,
+  positions: ParaPos[],
+): number {
+  if (positions.length === 0) {
+    const enS = en.scrollHeight - en.clientHeight;
+    const ruS = ru.scrollHeight - ru.clientHeight;
+    return enS > 0 ? (en.scrollTop / enS) * ruS : 0;
+  }
+
+  const enTop = en.scrollTop;
+  // Find the last paragraph whose enTop <= scroll position (binary search).
+  // That paragraph "contains" the current view — even if the view is past its enBottom
+  // (which can happen at the boundary between two paragraphs).
+  let lo = 0, hi = positions.length - 1, idx = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (positions[mid].enTop <= enTop) { idx = mid; lo = mid + 1; }
+    else { hi = mid - 1; }
+  }
+  const p = positions[idx];
+  const enSpan = p.enBottom - p.enTop;
+  const fraction = enSpan > 0 ? Math.max(0, Math.min(1, (enTop - p.enTop) / enSpan)) : 0;
+  const ruSpan = p.ruBottom - p.ruTop;
+  const result = p.ruTop + fraction * ruSpan;
+  return result;
 }
 
 function clampRu(ru: HTMLElement, pos: number): number {
@@ -376,13 +415,16 @@ export default function ReaderPage() {
   const ruRef = useRef<HTMLDivElement>(null);
 
   // ── Scroll sync state ──────────────────────────────────────────────────────
-  // ruOffset: how many px RU deviates from its proportional position.
+  // ruOffset: how many px RU deviates from paragraph-synced position.
   // Set by: manual RU scroll, or word click. Persists across EN scroll events.
   const ruOffset = useRef(0);
   // syncLock: true while WE are programmatically setting ru.scrollTop,
   // so handleRuScroll ignores the resulting scroll event.
   const syncLock = useRef(false);
   const syncLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cached paragraph positions (EN + RU offsets). Rebuilt after each render
+  // that changes paragraph layout. Used by paragraphSync() in the scroll hot path.
+  const paraPositions = useRef<ParaPos[]>([]);
 
   const scrollPctRef = useRef(0);
   const [scrollPct, setScrollPct] = useState(0);
@@ -552,7 +594,7 @@ export default function ReaderPage() {
           if (ru) {
             const ruS = ru.scrollHeight - ru.clientHeight;
             // Use proportional position on restore — smooth and consistent
-            ru.scrollTop = Math.max(0, Math.min(ruS, proportionalRuPos(en, ru)));
+            ru.scrollTop = Math.max(0, Math.min(ruS, paragraphSync(en, ru, paraPositions.current)));
           }
         }
         pendingRestoreRatio.current = null;
@@ -571,7 +613,7 @@ export default function ReaderPage() {
       const ru = ruRef.current;
       if (!en || !ru) return;
       const ruS = ru.scrollHeight - ru.clientHeight;
-      ru.scrollTop = clampRu(ru, proportionalRuPos(en, ru) + ruOffset.current);
+      ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
     }, 50); // wait for panel to mount + render
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -600,6 +642,39 @@ export default function ReaderPage() {
     }, 800);
   }, [bookId, currentBatch]);
 
+  // ── Paragraph position cache ────────────────────────────────────────────────
+  // After every layout change (new batch loaded, font settings changed), measure
+  // the EN and RU offsets of each paragraph pair and cache them. The scroll hot
+  // path uses these cached values via binary search — zero DOM queries per scroll.
+  useLayoutEffect(() => {
+    const en = enRef.current;
+    const ru = ruRef.current;
+    if (!en || !ru || displayParagraphs.length === 0) return;
+    // Defer to next animation frame so browser finishes computing layout first
+    const raf = requestAnimationFrame(() => {
+      const positions: ParaPos[] = [];
+      for (const p of displayParagraphs) {
+        const enEl = document.getElementById(`para-${p.id}`);
+        const ruEl = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
+        if (!enEl || !ruEl) continue;
+        const enT = offsetInContainer(enEl, en);
+        const ruT = offsetInContainer(ruEl, ru);
+        positions.push({
+          id: p.id,
+          enTop: enT,
+          enBottom: enT + enEl.offsetHeight,
+          ruTop: ruT,
+          ruBottom: ruT + ruEl.offsetHeight,
+        });
+      }
+      paraPositions.current = positions;
+    });
+    return () => cancelAnimationFrame(raf);
+  // book is included so that when the book metadata arrives (making isLoadingBook go false
+  // and the EN/RU panels mount), we rebuild positions even if displayParagraphs didn't change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayParagraphs, settings.fontSize, settings.fontFamily, settings.lineSpacing, showTranslations, book]);
+
   // ── Lock helper: prevents RU scroll listener from overwriting ruOffset
   //    while WE are programmatically setting ru.scrollTop ─────────────────────
   const lockSync = useCallback(() => {
@@ -611,7 +686,7 @@ export default function ReaderPage() {
 
   // ── EN scroll handler: syncs RU synchronously (same frame) for visual smoothness ──
   // Key perf fix: we do NOT call lockSync() here. The RU echo event recalculates
-  // ruOffset to the same value (proportionalRuPos + ruOffset - proportionalRuPos = ruOffset),
+  // ruOffset to the same value (paragraphSync + ruOffset - paragraphSync = ruOffset),
   // so it causes zero drift. Removing lockSync() eliminates the clearTimeout+setTimeout
   // churn (120+ timer ops/sec on mobile) that was the main cause of overheating.
   const handleEnScroll = useCallback(() => {
@@ -630,14 +705,14 @@ export default function ReaderPage() {
     }
     saveProgressDebounced(ratio);
 
-    // Sync RU position synchronously. No threshold — even tiny EN scrolls must move RU.
-    // (A 1px EN movement gives ~0.4px RU delta which would be suppressed by any threshold.)
+    // Sync RU using paragraph-fraction sync: same fractional position within the
+    // paragraph visible at the top of EN. Zero DOM queries — uses cached positions.
     const r = ruRef.current;
     if (!r) return;
-    const target = clampRu(r, proportionalRuPos(en, r) + ruOffset.current);
-    if (r.scrollTop === target) return; // skip only if bit-for-bit identical
+    const target = clampRu(r, paragraphSync(en, r, paraPositions.current) + ruOffset.current);
+    if (r.scrollTop === target) return;
     r.scrollTop = target;
-    // No lockSync() needed: echo RU scroll preserves ruOffset identically.
+    // No lockSync() needed: echo from RU scroll event recomputes ruOffset identically.
   }, [saveProgressDebounced]);
 
   // ── RU scroll handler: records manual offset; ignores programmatic scrolls ──
@@ -646,7 +721,7 @@ export default function ReaderPage() {
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    ruOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+    ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
   }, []);
 
   // Sync theme to body background
@@ -675,7 +750,7 @@ export default function ReaderPage() {
     const delta = el.getBoundingClientRect().top - ru.getBoundingClientRect().top;
     ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
     // Store offset so subsequent EN scroll keeps RU near this position
-    ruOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+    ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
   }, [lockSync]);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
