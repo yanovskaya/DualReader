@@ -50,35 +50,38 @@ function timeLeft(remaining: number) {
 // ── Dictionary entry ───────────────────────────────────────────────────────────
 function WordDict({ word, context, colors }: { word: string; context: string; colors: ThemeColors }) {
   const clean = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
-  const { data: entry, isLoading, isError, refetch } = useLookupWord(
+  const { data: entry, isLoading, isError, isFetching, refetch } = useLookupWord(
     { word: clean, context },
     {
       query: {
         enabled: !!clean,
         queryKey: getLookupWordQueryKey({ word: clean, context }),
-        retry: 0,
+        retry: 2,
+        retryDelay: 1500,
         staleTime: 1000 * 60 * 60 * 24 * 7, // 7 days — cache indefinitely once loaded
       },
     }
   );
 
-  if (isLoading) return (
+  if (isLoading || isFetching) return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: colors.muted }}>
-      <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Ищем «{word}»…
+      <Loader2 size={14} style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
+      <span>Ищем «{word}»…</span>
     </div>
   );
   if (isError || !entry) return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ fontSize: 14, color: colors.muted }}>Не удалось найти «{word}». Попробуйте ещё раз.</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontSize: 14, color: colors.muted }}>Не удалось загрузить перевод «{word}».</div>
       <button
         onClick={() => refetch()}
         style={{
-          alignSelf: "flex-start", padding: "6px 16px", borderRadius: 20,
-          border: `1.5px solid ${colors.accent}`, background: "transparent",
-          color: colors.accent, fontSize: 13, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          gap: 6, padding: "10px 20px", borderRadius: 24,
+          border: "none", background: colors.accent,
+          color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
         }}
       >
-        Повторить
+        Попробовать снова
       </button>
     </div>
   );

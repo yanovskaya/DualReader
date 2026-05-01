@@ -98,7 +98,7 @@ export default defineConfig({
             handler: "NetworkFirst",
             options: {
               cacheName: "dict-cache",
-              networkTimeoutSeconds: 6,
+              networkTimeoutSeconds: 15,
               expiration: {
                 maxEntries: 1000,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
