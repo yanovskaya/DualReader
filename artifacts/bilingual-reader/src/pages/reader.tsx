@@ -326,25 +326,17 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   );
 }
 
-// Smooth proportional scroll position: RU moves at the same fractional rate as EN.
-// Used for continuous sync during scroll — never causes jumps.
+// ── Scroll sync helpers ────────────────────────────────────────────────────────
+// RU scroll target = proportional(en.scrollTop) + ruOffset
+// ruOffset is set by: manual RU scroll or word click.
 function proportionalRuPos(en: HTMLElement, ru: HTMLElement): number {
   const enS = en.scrollHeight - en.clientHeight;
   const ruS = ru.scrollHeight - ru.clientHeight;
   return enS > 0 ? (en.scrollTop / enS) * ruS : 0;
 }
 
-// Sentence-level snap: scrolls RU so the sentence matching sentenceIdx is at the
-// top of the RU panel. Falls back to paragraph-level if the sentence span isn't found.
-// Only called on word tap — never during continuous scroll.
-function snapRuToSentence(ru: HTMLElement, paraId: number, sentenceIdx: number): number | null {
-  // First try the exact sentence span
-  const sentenceEl = ru.querySelector<HTMLElement>(`[data-ru-sentence="${paraId}-${sentenceIdx}"]`);
-  const target = sentenceEl
-    ?? ru.querySelector<HTMLElement>(`[data-ru-para="${paraId}"]`);
-  if (!target) return null;
-  const delta = target.getBoundingClientRect().top - ru.getBoundingClientRect().top;
-  return ru.scrollTop + delta;
+function clampRu(ru: HTMLElement, pos: number): number {
+  return Math.max(0, Math.min(ru.scrollHeight - ru.clientHeight, pos));
 }
 
 // ── Main Reader ────────────────────────────────────────────────────────────────
@@ -382,14 +374,18 @@ export default function ReaderPage() {
   // Two synced scroll panels — EN on top, RU on bottom
   const enRef = useRef<HTMLDivElement>(null);
   const ruRef = useRef<HTMLDivElement>(null);
-  // Track which panel is the source of a sync to avoid ping-pong
-  const syncSource = useRef<"en" | "ru" | null>(null);
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Persistent manual offset: how many px the user has nudged RU away from the
-  // proportional position.  Survives across EN scroll events.
-  const ruManualOffset = useRef(0);
-  const scrollPctRef = useRef(0);            // always current — no re-render
-  const [scrollPct, setScrollPct] = useState(0); // throttled — drives UI
+
+  // ── Scroll sync state ──────────────────────────────────────────────────────
+  // ruOffset: how many px RU deviates from its proportional position.
+  // Set by: manual RU scroll, or word click. Persists across EN scroll events.
+  const ruOffset = useRef(0);
+  // syncLock: true while WE are programmatically setting ru.scrollTop,
+  // so handleRuScroll ignores the resulting scroll event.
+  const syncLock = useRef(false);
+  const syncLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scrollPctRef = useRef(0);
+  const [scrollPct, setScrollPct] = useState(0);
   const scrollPctTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sentinel div at the bottom of the EN panel to trigger next batch load
@@ -574,7 +570,7 @@ export default function ReaderPage() {
       const ru = ruRef.current;
       if (!en || !ru) return;
       const ruS = ru.scrollHeight - ru.clientHeight;
-      ru.scrollTop = Math.max(0, Math.min(ruS, proportionalRuPos(en, ru) + ruManualOffset.current));
+      ru.scrollTop = clampRu(ru, proportionalRuPos(en, ru) + ruOffset.current);
     }, 50); // wait for panel to mount + render
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -603,19 +599,25 @@ export default function ReaderPage() {
     }, 800);
   }, [bookId, currentBatch]);
 
-  // Sync scroll between EN and RU panels without ping-pong
-  const clearSyncTimer = useCallback(() => {
-    if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null; }
+  // ── Lock helper: prevents RU scroll events from overwriting ruOffset
+  //    while WE are programmatically setting ru.scrollTop ─────────────────────
+  const lockSync = useCallback(() => {
+    syncLock.current = true;
+    if (syncLockTimer.current) clearTimeout(syncLockTimer.current);
+    // 80 ms covers browser scroll-event delivery on all platforms
+    syncLockTimer.current = setTimeout(() => { syncLock.current = false; }, 80);
   }, []);
 
+  // ── EN panel scroll → drive RU proportionally + stored offset ────────────
   const handleEnScroll = useCallback(() => {
     const en = enRef.current;
-    if (!en) return;
+    const ru = ruRef.current;
+    if (!en || !ru) return;
+
+    // Update progress (throttled to ≤ 6 re-renders/s)
     const scrollable = en.scrollHeight - en.clientHeight;
     const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
     scrollPctRef.current = ratio;
-    // Throttle React state updates to ≤ 6/s so scroll events don't
-    // trigger a full component re-render at 60 fps
     if (!scrollPctTimer.current) {
       scrollPctTimer.current = setTimeout(() => {
         scrollPctTimer.current = null;
@@ -623,29 +625,20 @@ export default function ReaderPage() {
       }, 150);
     }
     saveProgressDebounced(ratio);
-    // Don't propagate if RU is currently being scrolled by the user
-    if (syncSource.current === "ru") return;
-    const ru = ruRef.current;
-    if (!ru) return;
-    syncSource.current = "en";
-    clearSyncTimer();
-    // Proportional position + whatever manual offset the user has set via word tap or manual RU scroll.
-    // Pure proportional = always smooth, never jumps. ruManualOffset fine-tunes alignment.
-    const target = proportionalRuPos(en, ru) + ruManualOffset.current;
-    const ruS = ru.scrollHeight - ru.clientHeight;
-    ru.scrollTop = Math.max(0, Math.min(ruS, target));
-    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 200);
-  }, [clearSyncTimer, saveProgressDebounced]);
 
+    // Move RU: proportional position + remembered offset
+    lockSync();
+    ru.scrollTop = clampRu(ru, proportionalRuPos(en, ru) + ruOffset.current);
+  }, [lockSync, saveProgressDebounced]);
+
+  // ── RU panel scroll → only fires on genuine user gesture ─────────────────
   const handleRuScroll = useCallback(() => {
-    // Ignore scroll events that we triggered ourselves from EN handler
-    if (syncSource.current === "en") return;
+    if (syncLock.current) return; // ignore events we caused ourselves
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    // User manually nudged RU — record how far they deviated from proportional position.
-    // Next EN scroll will preserve this delta (so RU doesn't snap back).
-    ruManualOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+    // Remember how far the user moved RU away from proportional position
+    ruOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
   }, []);
 
   // Sync theme to body background
@@ -659,24 +652,23 @@ export default function ReaderPage() {
     setShowSettings(false);
   }, []);
 
-  // Single tap on an EN word → snap RU to the exact matching sentence
+  // ── Single tap on EN word → scroll RU to the matching sentence ───────────
   const handleWordClick = useCallback((p: Paragraph, sentenceIdx: number) => {
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    // Lock out RU→offset updates while we programmatically scroll
-    clearSyncTimer();
-    syncSource.current = "en";
-    const snapped = snapRuToSentence(ru, p.id, sentenceIdx);
-    if (snapped !== null) {
-      const ruS = ru.scrollHeight - ru.clientHeight;
-      ru.scrollTop = Math.max(0, Math.min(ruS, snapped));
-      // Record how far this snap deviates from the proportional position
-      // so subsequent EN scrolls preserve the alignment.
-      ruManualOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
-    }
-    syncTimer.current = setTimeout(() => { syncSource.current = null; }, 300);
-  }, [clearSyncTimer]);
+    // Find sentence span first, fall back to paragraph div
+    const el =
+      ru.querySelector<HTMLElement>(`[data-ru-sentence="${p.id}-${sentenceIdx}"]`) ??
+      ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
+    if (!el) return;
+    lockSync();
+    // Bring the target to the top of the RU panel
+    const delta = el.getBoundingClientRect().top - ru.getBoundingClientRect().top;
+    ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
+    // Store offset so subsequent EN scroll keeps RU near this position
+    ruOffset.current = ru.scrollTop - proportionalRuPos(en, ru);
+  }, [lockSync]);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
 
