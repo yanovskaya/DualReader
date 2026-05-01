@@ -386,8 +386,6 @@ export default function ReaderPage() {
   // so handleRuScroll ignores the resulting scroll event.
   const syncLock = useRef(false);
   const syncLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // rAF handle so RU sync fires at most once per animation frame
-  const syncRafRef = useRef<number | null>(null);
 
   const scrollPctRef = useRef(0);
   const [scrollPct, setScrollPct] = useState(0);
@@ -614,13 +612,16 @@ export default function ReaderPage() {
     syncLockTimer.current = setTimeout(() => { syncLock.current = false; }, 120);
   }, []);
 
-  // ── EN scroll handler: throttled via rAF so RU is updated at most once per frame
-  // This prevents the 60+ DOM writes/second that were overheating mobile devices.
+  // ── EN scroll handler: syncs RU synchronously (same frame) for visual smoothness ──
+  // Key perf fix: we do NOT call lockSync() here. The RU echo event recalculates
+  // ruOffset to the same value (proportionalRuPos + ruOffset - proportionalRuPos = ruOffset),
+  // so it causes zero drift. Removing lockSync() eliminates the clearTimeout+setTimeout
+  // churn (120+ timer ops/sec on mobile) that was the main cause of overheating.
   const handleEnScroll = useCallback(() => {
     const en = enRef.current;
     if (!en) return;
 
-    // Progress tracking (throttled to ≤ 6 re-renders/s)
+    // Progress tracking (throttled to ≤ 6 re-renders/s via 150ms cooldown)
     const scrollable = en.scrollHeight - en.clientHeight;
     const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
     scrollPctRef.current = ratio;
@@ -632,21 +633,14 @@ export default function ReaderPage() {
     }
     saveProgressDebounced(ratio);
 
-    // Schedule RU sync at most ONCE per animation frame.
-    // If a frame is already scheduled, skip — it will read the latest scrollTop.
-    if (syncRafRef.current !== null) return;
-    syncRafRef.current = requestAnimationFrame(() => {
-      syncRafRef.current = null;
-      const e = enRef.current;
-      const r = ruRef.current;
-      if (!e || !r) return;
-      const target = clampRu(r, proportionalRuPos(e, r) + ruOffset.current);
-      // Skip the write if already within 1px — avoids a needless browser repaint
-      if (Math.abs(r.scrollTop - target) <= 1) return;
-      lockSync();
-      r.scrollTop = target;
-    });
-  }, [lockSync, saveProgressDebounced]);
+    // Sync RU position. Skip if already within 1px to avoid pointless DOM writes.
+    const r = ruRef.current;
+    if (!r) return;
+    const target = clampRu(r, proportionalRuPos(en, r) + ruOffset.current);
+    if (Math.abs(r.scrollTop - target) <= 1) return;
+    r.scrollTop = target;
+    // No lockSync() needed: the echo RU scroll event preserves ruOffset identically.
+  }, [saveProgressDebounced]);
 
   // ── RU scroll handler: records manual offset; ignores programmatic scrolls ──
   const handleRuScroll = useCallback(() => {

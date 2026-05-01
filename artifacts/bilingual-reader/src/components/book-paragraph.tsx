@@ -114,7 +114,7 @@ export function BookParagraph({
         // Start window to detect a follow-up double-tap
         clickTimer.current = setTimeout(() => {
           clickCount.current = 0;
-        }, 350);
+        }, 500);
       } else {
         // Second tap within 350 ms → double-tap: open dictionary
         if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
@@ -165,6 +165,7 @@ export function BookParagraph({
         wordBreak: "break-word",
         overflowWrap: "break-word",
         textAlign,
+        touchAction: "manipulation",
       }}>
         {tokens.map(({ token, isWord, charOffset: co }, i) => {
           if (!isWord) return <span key={i}>{token}</span>;
