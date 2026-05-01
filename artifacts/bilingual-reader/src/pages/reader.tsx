@@ -50,12 +50,28 @@ function timeLeft(remaining: number) {
 // ── Dictionary entry ───────────────────────────────────────────────────────────
 function WordDict({ word, context, colors }: { word: string; context: string; colors: ThemeColors }) {
   const clean = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
+
+  // Extract just the sentence that contains the word so the GET URL stays short.
+  // Full paragraph text can be 26 000+ chars → HTTP 431 on long paragraphs.
+  const shortContext = (() => {
+    const lower = context.toLowerCase();
+    const pos = lower.indexOf(clean);
+    if (pos < 0) return context.slice(0, 300);
+    // Walk backwards to the nearest sentence boundary (period/newline)
+    let start = pos;
+    while (start > 0 && context[start - 1] !== "." && context[start - 1] !== "\n") start--;
+    // Walk forwards to the next sentence boundary
+    let end = pos + clean.length;
+    while (end < context.length && context[end] !== "." && context[end] !== "\n") end++;
+    return context.slice(start, end + 1).trim().slice(0, 300);
+  })();
+
   const { data: entry, isLoading, isError, isFetching, refetch } = useLookupWord(
-    { word: clean, context },
+    { word: clean, context: shortContext },
     {
       query: {
         enabled: !!clean,
-        queryKey: getLookupWordQueryKey({ word: clean, context }),
+        queryKey: getLookupWordQueryKey({ word: clean, context: shortContext }),
         retry: 2,
         retryDelay: 1500,
         staleTime: 1000 * 60 * 60 * 24 * 7, // 7 days — cache indefinitely once loaded
