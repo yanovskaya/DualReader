@@ -737,7 +737,12 @@ export default function ReaderPage() {
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
+    // Guard: only update ruOffset when positions are ready. If positions are empty
+    // the proportional fallback gives a wrong offset that will break sync once
+    // positions are rebuilt.
+    if (paraPositions.current.length > 0) {
+      ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
+    }
   }, []);
 
   // Sync theme to body background
@@ -765,8 +770,12 @@ export default function ReaderPage() {
     // Bring the target to the top of the RU panel
     const delta = el.getBoundingClientRect().top - ru.getBoundingClientRect().top;
     ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
-    // Store offset so subsequent EN scroll keeps RU near this position
-    ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
+    // Only record the offset when paragraph positions are ready.
+    // If positions are empty the fallback is proportional, which gives a wrong
+    // ruOffset that breaks all subsequent EN→RU sync — so we leave it as 0.
+    if (paraPositions.current.length > 0) {
+      ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
+    }
   }, [lockSync]);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
