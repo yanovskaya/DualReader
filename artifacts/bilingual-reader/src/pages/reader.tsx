@@ -630,13 +630,14 @@ export default function ReaderPage() {
     }
     saveProgressDebounced(ratio);
 
-    // Sync RU position. Skip if already within 1px to avoid pointless DOM writes.
+    // Sync RU position synchronously. No threshold — even tiny EN scrolls must move RU.
+    // (A 1px EN movement gives ~0.4px RU delta which would be suppressed by any threshold.)
     const r = ruRef.current;
     if (!r) return;
     const target = clampRu(r, proportionalRuPos(en, r) + ruOffset.current);
-    if (Math.abs(r.scrollTop - target) <= 1) return;
+    if (r.scrollTop === target) return; // skip only if bit-for-bit identical
     r.scrollTop = target;
-    // No lockSync() needed: the echo RU scroll event preserves ruOffset identically.
+    // No lockSync() needed: echo RU scroll preserves ruOffset identically.
   }, [saveProgressDebounced]);
 
   // ── RU scroll handler: records manual offset; ignores programmatic scrolls ──

@@ -106,17 +106,18 @@ export function BookParagraph({
   const handleWordTap = useCallback(
     (word: string, wordCharOffset: number) => {
       if (clickTimer.current) {
-        // Second tap arrived before timer fired → double-tap → open dictionary immediately
+        // Second tap within 250 ms → double-tap: open dictionary
         clearTimeout(clickTimer.current);
         clickTimer.current = null;
         onWordDoubleClick?.(word, paragraph);
       } else {
-        // First tap: wait 300 ms to confirm it is a single-tap (not the start of a double-tap)
+        // First tap: scroll RU to matching sentence immediately (no lag)
+        const sentenceIdx = sentenceIdxForCharPos(paragraph.originalText, wordCharOffset);
+        onWordClick?.(paragraph, sentenceIdx);
+        // Open a 250 ms window; if a second tap arrives it fires the dictionary
         clickTimer.current = setTimeout(() => {
           clickTimer.current = null;
-          const sentenceIdx = sentenceIdxForCharPos(paragraph.originalText, wordCharOffset);
-          onWordClick?.(paragraph, sentenceIdx);
-        }, 300);
+        }, 250);
       }
     },
     [paragraph, onWordClick, onWordDoubleClick]
