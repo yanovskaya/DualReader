@@ -388,7 +388,9 @@ export default function ReaderPage() {
   // Persistent manual offset: how many px the user has nudged RU away from the
   // proportional position.  Survives across EN scroll events.
   const ruManualOffset = useRef(0);
-  const [scrollPct, setScrollPct] = useState(0);
+  const scrollPctRef = useRef(0);            // always current — no re-render
+  const [scrollPct, setScrollPct] = useState(0); // throttled — drives UI
+  const scrollPctTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sentinel div at the bottom of the EN panel to trigger next batch load
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -548,10 +550,17 @@ export default function ReaderPage() {
   const handleEnScroll = useCallback(() => {
     const en = enRef.current;
     if (!en) return;
-    // Update progress bar regardless
     const scrollable = en.scrollHeight - en.clientHeight;
     const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
-    setScrollPct(ratio);
+    scrollPctRef.current = ratio;
+    // Throttle React state updates to ≤ 6/s so scroll events don't
+    // trigger a full component re-render at 60 fps
+    if (!scrollPctTimer.current) {
+      scrollPctTimer.current = setTimeout(() => {
+        scrollPctTimer.current = null;
+        setScrollPct(scrollPctRef.current);
+      }, 150);
+    }
     saveProgressDebounced(ratio);
     // Don't propagate if RU is currently being scrolled by the user
     if (syncSource.current === "ru") return;

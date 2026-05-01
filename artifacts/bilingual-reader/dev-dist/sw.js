@@ -82,7 +82,7 @@ define(['./workbox-ebf8facd'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.7a377f28amg"
+    "revision": "0.o7mcoif9dqk"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
@@ -107,7 +107,7 @@ define(['./workbox-ebf8facd'], (function (workbox) { 'use strict';
       statuses: [0, 200]
     })]
   }), 'GET');
-  workbox.registerRoute(/^\/api\/lookup-word/, new workbox.NetworkFirst({
+  workbox.registerRoute(/^\/api\/dictionary\/lookup/, new workbox.NetworkFirst({
     "cacheName": "dict-cache",
     "networkTimeoutSeconds": 6,
     plugins: [new workbox.ExpirationPlugin({

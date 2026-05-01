@@ -90,11 +90,14 @@ export function BookParagraph({
     (word: string) => {
       clickCount.current += 1;
       if (clickCount.current === 1) {
+        // Fire single-tap action IMMEDIATELY — no lag
+        onWordClick?.(paragraph);
+        // Start window to detect a follow-up double-tap
         clickTimer.current = setTimeout(() => {
           clickCount.current = 0;
-          onWordClick?.(paragraph);          // single-tap confirmed
         }, 350);
       } else {
+        // Second tap within 350 ms → double-tap: open dictionary
         if (clickTimer.current) { clearTimeout(clickTimer.current); clickTimer.current = null; }
         clickCount.current = 0;
         onWordDoubleClick?.(word, paragraph);
