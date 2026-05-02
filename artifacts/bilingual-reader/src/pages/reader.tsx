@@ -803,9 +803,12 @@ export default function ReaderPage() {
       setSyncState({ phase: "waitRu", paraId: p.id, enIdx: sentenceIdx });
       const paraEl = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
       if (paraEl) {
-        const delta = paraEl.getBoundingClientRect().top - ru.getBoundingClientRect().top;
+        // Use absolute offset in the scroll container (not viewport-relative).
+        // getBoundingClientRect delta would go negative when the paragraph is
+        // above the current RU viewport, clamping scrollTop to 0 (top of book).
+        const absTop = paraEl.getBoundingClientRect().top - ru.getBoundingClientRect().top + ru.scrollTop;
         lastProgRuWrite.current = performance.now();
-        ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
+        ru.scrollTop = clampRu(ru, absTop);
         if (paraPositions.current.length > 0) {
           ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
         }
