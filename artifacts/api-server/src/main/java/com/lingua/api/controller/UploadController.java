@@ -1,0 +1,77 @@
+package com.lingua.api.controller;
+
+import com.lingua.api.model.Book;
+import com.lingua.api.service.BookService;
+import com.lingua.api.service.EpubParser;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequiredArgsConstructor
+public class UploadController {
+
+    private final BookService bookService;
+    private final EpubParser epubParser;
+
+    // POST /books/upload
+    @PostMapping("/books/upload")
+    public ResponseEntity<?> upload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "title", required = false) String customTitle,
+            @RequestParam(value = "author", required = false) String customAuthor) {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
+        }
+
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+        String detectedTitle = customTitle != null && !customTitle.isBlank()
+                ? customTitle.trim()
+                : originalName.replaceAll("(?i)\\.(txt|epub)$", "").replace("-", " ").replace("_", " ");
+
+        try {
+            byte[] bytes = file.getBytes();
+            String content;
+
+            boolean isEpub = originalName.toLowerCase().endsWith(".epub")
+                    || "application/epub+zip".equals(file.getContentType());
+
+            if (isEpub) {
+                EpubParser.EpubResult parsed = epubParser.parse(bytes);
+                content = parsed.content();
+                if (customTitle == null || customTitle.isBlank()) {
+                    detectedTitle = parsed.title();
+                }
+            } else {
+                content = new String(bytes);
+            }
+
+            List<String> paragraphs = epubParser.splitIntoParagraphs(content);
+            if (paragraphs.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Could not extract readable text from the file"));
+            }
+
+            String author = customAuthor != null && !customAuthor.isBlank() ? customAuthor.trim() : null;
+            Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs);
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", book.getId());
+            m.put("title", book.getTitle());
+            m.put("author", book.getAuthor());
+            m.put("language", book.getLanguage());
+            m.put("totalParagraphs", book.getTotalParagraphs());
+            m.put("translatedParagraphs", 0);
+            m.put("translationStatus", book.getTranslationStatus());
+            m.put("createdAt", book.getCreatedAt().toString());
+            return ResponseEntity.status(201).body(m);
+
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to process file"));
+        }
+    }
+}
