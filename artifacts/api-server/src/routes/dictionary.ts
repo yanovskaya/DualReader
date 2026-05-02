@@ -26,11 +26,9 @@ router.get("/dictionary/lookup", async (req, res) => {
       .limit(1);
 
     if (cached) {
-      // Only use cache if it has new-format data including synonyms.
-      // Old entries (before synonyms were added) have synonyms = [].
+      // Only use cache if it already has synonyms (entries before this feature have synonyms=[]).
       const hasSynonyms = cached.synonyms && cached.synonyms.length > 0;
-      const hasExamples = cached.examples.length > 0;
-      if (hasSynonyms && (cached.transcription !== null || hasExamples)) {
+      if (hasSynonyms) {
         await db.update(dictionaryLookupsTable)
           .set({ lookedUpAt: new Date() })
           .where(eq(dictionaryLookupsTable.id, cached.id));
@@ -153,6 +151,7 @@ router.get("/dictionary/recent", async (req, res) => {
     return res.json(recent.map(entry => ({
       word: entry.word,
       translations: entry.translations,
+      synonyms: entry.synonyms,
       partOfSpeech: entry.partOfSpeech ?? undefined,
       transcription: entry.transcription ?? undefined,
       examples: entry.examples,
