@@ -770,10 +770,13 @@ export default function ReaderPage() {
     // positions are rebuilt.
     if (paraPositions.current.length > 0) {
       ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
-      // Save so we restore RU position even if user never scrolls EN again.
-      const scrollable = en.scrollHeight - en.clientHeight;
-      const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
-      saveProgressDebounced(ratio);
+      // Only persist if the initial restore is already done — otherwise en.scrollTop
+      // is still 0 and we would overwrite the saved progress with scrollRatio=0.
+      if (pendingRestoreRatio.current === null) {
+        const scrollable = en.scrollHeight - en.clientHeight;
+        const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
+        saveProgressDebounced(ratio);
+      }
     }
   }, [saveProgressDebounced]);
 
