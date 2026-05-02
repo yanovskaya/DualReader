@@ -122,16 +122,22 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
         )}
       </div>
 
-      {/* Translations */}
+      {/* Translations + synonym for each */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {entry.translations.map((t, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontSize: 11, color: colors.muted, minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
-            <span style={{ fontSize: i === 0 ? 17 : 15, fontWeight: i === 0 ? 600 : 400, color: colors.text }}>
-              {t}
-            </span>
-          </div>
-        ))}
+        {entry.translations.map((t, i) => {
+          const syn = entry.synonyms?.[i];
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 11, color: colors.muted, minWidth: 16, textAlign: "right" }}>{i + 1}.</span>
+              <span style={{ fontSize: i === 0 ? 17 : 15, fontWeight: i === 0 ? 600 : 400, color: colors.text }}>
+                {t}
+              </span>
+              {syn && (
+                <span style={{ fontSize: 12, color: colors.muted, fontStyle: "italic" }}>({syn})</span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Examples with Russian translations */}
