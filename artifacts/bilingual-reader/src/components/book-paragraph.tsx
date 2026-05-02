@@ -10,6 +10,10 @@ export interface BookParagraphProps {
   /** sentenceIdx = which sentence within the paragraph the tapped word belongs to */
   onWordClick?: (p: Paragraph, sentenceIdx: number) => void;
   onWordDoubleClick?: (word: string, p: Paragraph) => void;
+  /** Sync mode (RU mode): called when user taps a RU sentence to create an alignment anchor */
+  onSentenceClick?: (paraId: number, sentenceIdx: number) => void;
+  /** Sync mode (EN mode): index of the selected EN sentence to highlight */
+  highlightSentenceIdx?: number;
   colors: ThemeColors;
   fontSize: number;
   fontFamily: string;
@@ -23,6 +27,8 @@ export function BookParagraph({
   mode,
   onWordClick,
   onWordDoubleClick,
+  onSentenceClick,
+  highlightSentenceIdx,
   colors,
   fontSize,
   fontFamily,
@@ -75,7 +81,20 @@ export function BookParagraph({
             textAlign,
           }}>
             {ruSentences.map((sentence, i) => (
-              <span key={i} data-ru-sentence={`${paragraph.id}-${i}`}>
+              <span
+                key={i}
+                data-ru-sentence={`${paragraph.id}-${i}`}
+                onClick={onSentenceClick
+                  ? (e) => { e.stopPropagation(); onSentenceClick(paragraph.id, i); }
+                  : undefined}
+                style={{ cursor: onSentenceClick ? "pointer" : "inherit", borderRadius: 2 }}
+                onMouseEnter={onSentenceClick
+                  ? (e) => { (e.currentTarget as HTMLElement).style.background = "rgba(234,179,8,0.25)"; }
+                  : undefined}
+                onMouseLeave={onSentenceClick
+                  ? (e) => { (e.currentTarget as HTMLElement).style.background = ""; }
+                  : undefined}
+              >
                 {sentence}
                 {i < ruSentences.length - 1 ? " " : ""}
               </span>
@@ -102,6 +121,12 @@ export function BookParagraph({
       isWord: /[\w''\u2019-]+/.test(token) && token.trim().length > 0,
     };
   });
+
+  // Precompute sentence index per token — only when a sentence highlight is
+  // requested (sync mode), to avoid the cost on every normal render.
+  const tokenSentenceIdx = highlightSentenceIdx !== undefined
+    ? tokens.map(({ charOffset: co }) => sentenceIdxForCharPos(text, co))
+    : null;
 
   const handleWordTap = useCallback(
     (word: string, wordCharOffset: number) => {
@@ -168,15 +193,36 @@ export function BookParagraph({
         touchAction: "manipulation",
       }}>
         {tokens.map(({ token, isWord, charOffset: co }, i) => {
-          if (!isWord) return <span key={i}>{token}</span>;
+          const isHighlighted = tokenSentenceIdx !== null && tokenSentenceIdx[i] === highlightSentenceIdx;
+          const highlightBg = "rgba(234,179,8,0.30)";
+          if (!isWord) {
+            return (
+              <span key={i} style={{ background: isHighlighted ? highlightBg : "transparent" }}>
+                {token}
+              </span>
+            );
+          }
           const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
           return (
             <span
               key={i}
               onClick={e => { e.stopPropagation(); handleWordTap(clean, co); }}
-              style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              style={{
+                cursor: "pointer",
+                borderRadius: 2,
+                touchAction: "manipulation",
+                background: isHighlighted ? highlightBg : "transparent",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.background = isHighlighted
+                  ? "rgba(234,179,8,0.55)"
+                  : colors.hover;
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.background = isHighlighted
+                  ? highlightBg
+                  : "transparent";
+              }}
             >
               {token}
             </span>
