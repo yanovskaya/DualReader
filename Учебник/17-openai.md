@@ -167,6 +167,29 @@ curl http://localhost:8080/test-ai
 
 После проверки — **удали** временный эндпоинт, нам он не нужен.
 
-## ➡️ Дальше
+## 🤔 Проверь себя
+
+  1. Почему мы используем встроенный `java.net.http.HttpClient` вместо `RestTemplate`/`WebClient`?
+  2. Зачем выносить `OPENAI_API_KEY` в переменную окружения, а не в `application.properties`?
+  3. Что делает `response_format = {"type": "json_object"}` и почему это удобно?
+
+  <details>
+  <summary>Мини-упражнение: сделай таймаут</summary>
+
+  OpenAI может зависнуть на минуты. Добавь таймаут к запросу:
+
+  ```java
+  HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(OPENAI_URL))
+      .timeout(Duration.ofSeconds(60))
+      .header(...)
+      .POST(...)
+      .build();
+  ```
+
+  Без `timeout` запрос может ждать вечно — и вместе с ним поток в твоём `@Async`-пуле.
+  </details>
+
+  ## ➡️ Дальше
 
 Теперь сделаем фоновый перевод книги. [Шаг 18 — Фоновый перевод →](18-фоновый-перевод.md)

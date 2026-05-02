@@ -231,6 +231,26 @@ curl http://localhost:8080/books
 
 — должна появиться новая запись.
 
-## ➡️ Дальше
+## 🤔 Проверь себя
+
+  1. Что внутри `.epub` — почему мы используем `ZipInputStream`?
+  2. Зачем нам Jsoup, если HTML можно парсить регулярками?
+  3. Почему мы читаем все `.xhtml`/`.html` файлы и склеиваем — нельзя ли сразу взять один?
+
+  <details>
+  <summary>Мини-упражнение: попробуй на настоящем .epub</summary>
+
+  Скачай любую публично-доступную книгу в `.epub` (например, с Project Gutenberg) и загрузи через `POST /upload`. Проверь:
+
+  ```bash
+  curl -F "file=@book.epub" -F "title=Test" -F "author=PG" \
+       -F "sourceLang=en" -F "targetLang=ru" \
+       http://localhost:8080/upload
+  ```
+
+  Открой созданную книгу через `GET /books/{id}/paragraphs` — текст читаемый?
+  </details>
+
+  ## ➡️ Дальше
 
 Базовая функциональность готова. Теперь — самое интересное: автоматический перевод. [Шаг 17 — Сервис OpenAI →](17-openai.md)

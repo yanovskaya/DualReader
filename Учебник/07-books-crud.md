@@ -163,6 +163,28 @@ curl -i -X POST http://localhost:8080/books \
 
 🎉 У тебя работает CRUD!
 
-## ➡️ Дальше
+## 🤔 Проверь себя
+
+  1. Зачем нужен слой Service, если можно вызывать репозиторий прямо из контроллера?
+  2. Что делает `@RequestBody` и какая библиотека превращает JSON в Java-объект?
+  3. Как Spring подставляет в конструктор `BookController` объект `BookService` — где это «волшебство»?
+
+  <details>
+  <summary>Мини-упражнение: верни 201 вместо 200 на POST</summary>
+
+  По REST-конвенции `POST` должен возвращать `201 Created`. Поменяй метод:
+
+  ```java
+  @PostMapping("/books")
+  public ResponseEntity<Book> create(@RequestBody Book book) {
+      Book saved = bookService.create(book);
+      return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+  }
+  ```
+
+  Проверь: `curl -i -X POST ...` — первая строка ответа `HTTP/1.1 201`.
+  </details>
+
+  ## ➡️ Дальше
 
 Книги — это просто строки в БД. Добавим параграфы. [Шаг 08 — Сущность Paragraph →](08-сущность-paragraph.md)

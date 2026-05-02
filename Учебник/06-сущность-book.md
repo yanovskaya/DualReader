@@ -135,6 +135,20 @@ Finished Spring Data repository scanning ... Found 1 JPA repository interface.
 
 > Если хочется немедленной проверки — можно временно добавить в `LinguaApiApplication.java` `CommandLineRunner`-бин, который при старте сделает `bookRepo.save(...)` и распечатает `findAll()`. Но это необязательно — мы это всё равно проверим эндпоинтами.
 
-## ➡️ Дальше
+## 🤔 Проверь себя
+
+  1. Что делает `@Entity` и почему без него ничего не работает?
+  2. Зачем `@GeneratedValue(strategy = GenerationType.IDENTITY)`? Что было бы без него?
+  3. Почему в Spring Data JPA нам достаточно объявить **интерфейс** репозитория, без реализации?
+
+  <details>
+  <summary>Мини-упражнение: добавь поле без миграции</summary>
+
+  Что произойдёт, если ты добавишь в `Book` новое поле `@Column private String description;`, но **не** добавишь колонку в таблицу?
+
+  **Ответ:** при `SELECT` Hibernate спросит у БД колонку `description`, получит ошибку «column does not exist» и упадёт. Поэтому при `spring.jpa.hibernate.ddl-auto=none` схема в БД и сущности должны совпадать вручную.
+  </details>
+
+  ## ➡️ Дальше
 
 Делаем первые HTTP-эндпоинты для книг. [Шаг 07 — GET /books и POST /books →](07-books-crud.md)

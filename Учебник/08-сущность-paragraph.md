@@ -94,6 +94,24 @@ Found 2 JPA repository interfaces.
 
 Эндпоинтов пока нет — на следующем шаге создадим книги вместе с параграфами.
 
-## ➡️ Дальше
+## 🤔 Проверь себя
+
+  1. Почему мы сделали `bookId` простым `Integer`, а не `@ManyToOne private Book book;`?
+  2. Зачем `columnDefinition = "text"` для `originalText`?
+  3. Как Spring Data понимает, что метод `countByBookId(Integer)` должен превратиться в `SELECT COUNT(*) ... WHERE book_id = ?`?
+
+  <details>
+  <summary>Мини-упражнение: добавь свой derived query</summary>
+
+  Добавь в репозиторий метод, который вернёт количество **переведённых** параграфов в книге:
+
+  ```java
+  long countByBookIdAndIsTranslatedTrue(Integer bookId);
+  ```
+
+  Spring сам сгенерирует SQL: `SELECT COUNT(*) FROM paragraphs WHERE book_id = ? AND is_translated = true`.
+  </details>
+
+  ## ➡️ Дальше
 
 Расширяем `POST /books`, чтобы он принимал большой текст и разбивал его на параграфы. [Шаг 09 — Разбиваем книгу на параграфы →](09-разбиение-на-параграфы.md)

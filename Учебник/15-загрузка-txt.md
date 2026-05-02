@@ -147,6 +147,25 @@ curl -X POST http://localhost:8080/books/upload \
 
 Ожидаем JSON с `id` и `totalParagraphs: 2`.
 
-## ➡️ Дальше
+## 🤔 Проверь себя
+
+  1. Что такое `multipart/form-data` и почему обычный JSON не подходит для файлов?
+  2. Что делает `MultipartFile` и откуда Spring берёт его содержимое?
+  3. Зачем мы проверяем `getOriginalFilename()` и расширение?
+
+  <details>
+  <summary>Мини-упражнение: ограничь размер</summary>
+
+  Добавь в `application.properties`:
+
+  ```properties
+  spring.servlet.multipart.max-file-size=10MB
+  spring.servlet.multipart.max-request-size=10MB
+  ```
+
+  Проверь, что загрузка файла больше 10 МБ возвращает ошибку `413 Payload Too Large` (или `MaxUploadSizeExceededException` в логах).
+  </details>
+
+  ## ➡️ Дальше
 
 Текстовые файлы загружаются. Теперь .epub. [Шаг 16 — Парсинг .epub →](16-epub.md)
