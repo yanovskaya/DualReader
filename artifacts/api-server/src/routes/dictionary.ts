@@ -26,8 +26,11 @@ router.get("/dictionary/lookup", async (req, res) => {
       .limit(1);
 
     if (cached) {
-      // Only use cache if it has new-format data (transcription field present)
-      if (cached.transcription !== null || cached.transcription === null && cached.examples.length > 0) {
+      // Only use cache if it has new-format data including synonyms.
+      // Old entries (before synonyms were added) have synonyms = [].
+      const hasSynonyms = cached.synonyms && cached.synonyms.length > 0;
+      const hasExamples = cached.examples.length > 0;
+      if (hasSynonyms && (cached.transcription !== null || hasExamples)) {
         await db.update(dictionaryLookupsTable)
           .set({ lookedUpAt: new Date() })
           .where(eq(dictionaryLookupsTable.id, cached.id));
@@ -35,6 +38,7 @@ router.get("/dictionary/lookup", async (req, res) => {
         return res.json({
           word: cached.word,
           translations: cached.translations,
+          synonyms: cached.synonyms,
           partOfSpeech: cached.partOfSpeech ?? undefined,
           transcription: cached.transcription ?? undefined,
           examples: cached.examples,
@@ -51,7 +55,7 @@ router.get("/dictionary/lookup", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-4.1-nano",
-      max_completion_tokens: 500,
+      max_completion_tokens: 600,
       messages: [
         {
           role: "system",
@@ -61,6 +65,7 @@ JSON format:
 {
   "word": "the word or full phrasal verb",
   "translations": ["перевод1", "перевод2"],
+  "synonyms": ["synonym1", "synonym2"],
   "partOfSpeech": "noun|verb|adjective|adverb|phrasal verb|preposition|conjunction|pronoun|interjection",
   "transcription": "/AmE IPA/",
   "examples": ["English example 1.", "English example 2."],
@@ -70,6 +75,7 @@ JSON format:
 Rules:
 - "word": if the queried word is PART of a common phrasal verb (e.g. "put" in "put up with"), return the FULL phrasal verb. Otherwise return the word as-is.
 - "translations": 1–3 Russian translations, context-appropriate first.
+- "synonyms": for EACH translation, the single closest English synonym that best captures that specific meaning. Must be the same length as "translations". Use a word different from "word" itself.
 - "transcription": American English IPA in slashes, e.g. /wɔːtər/. For phrasal verbs omit it.
 - "examples": 2 short natural English sentences using the word/phrasal verb.
 - "exampleTranslations": Russian translation of EACH example — same count, same order as "examples".
@@ -86,6 +92,7 @@ Rules:
     let ai: {
       word?: string;
       translations?: string[];
+      synonyms?: string[];
       partOfSpeech?: string;
       transcription?: string;
       examples?: string[];
@@ -100,15 +107,19 @@ Rules:
 
     const resultWord = (ai.word ?? normalizedWord).toLowerCase().trim();
     const translations = ai.translations ?? ["перевод недоступен"];
+    // Ensure synonyms array is same length as translations; pad with "" if needed
+    const rawSynonyms = ai.synonyms ?? [];
+    const synonyms = translations.map((_, i) => rawSynonyms[i] ?? "");
     const partOfSpeech = ai.partOfSpeech ?? null;
     const transcription = ai.transcription ?? null;
     const examples = ai.examples ?? [];
     const exampleTranslations = ai.exampleTranslations ?? [];
 
-    // Store in DB (upsert by normalizedWord)
+    // Store in DB
     await db.insert(dictionaryLookupsTable).values({
       word: resultWord,
       translations,
+      synonyms,
       partOfSpeech,
       transcription,
       examples,
@@ -118,6 +129,7 @@ Rules:
     return res.json({
       word: resultWord,
       translations,
+      synonyms,
       partOfSpeech: partOfSpeech ?? undefined,
       transcription: transcription ?? undefined,
       examples,

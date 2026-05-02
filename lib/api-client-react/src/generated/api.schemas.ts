@@ -80,6 +80,8 @@ export interface DictionaryEntry {
   /** The looked-up word or phrasal verb (may differ from query if a phrasal verb was detected) */
   word: string;
   translations: string[];
+  /** Closest English synonym for each translation (parallel array, same length as translations) */
+  synonyms?: string[];
   partOfSpeech?: string;
   /** AmE IPA transcription, e.g. /ˈwɔːtər/ */
   transcription?: string;

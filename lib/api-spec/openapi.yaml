@@ -450,6 +450,11 @@ components:
           type: array
           items:
             type: string
+        synonyms:
+          type: array
+          items:
+            type: string
+          description: Closest English synonym for each translation (parallel array, same length as translations)
         partOfSpeech:
           type: string
         transcription:

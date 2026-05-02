@@ -39,8 +39,17 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
         {entry.partOfSpeech && (
           <span style={{ color: accentColor, fontStyle: "italic", fontSize: 12, marginLeft: 6 }}>{entry.partOfSpeech}</span>
         )}
-        {/* Translations */}
-        <span style={{ color: textColor }}> — {entry.translations.join(", ")}</span>
+        {/* Translations with nearest English synonym after each one */}
+        <span style={{ color: textColor }}> — {entry.translations.map((t, i) => {
+          const syn = entry.synonyms?.[i];
+          return (
+            <span key={i}>
+              {i > 0 && ", "}
+              {t}
+              {syn && <span style={{ color: mutedColor, fontSize: 11 }}> ({syn})</span>}
+            </span>
+          );
+        })}</span>
         {/* First example + its translation */}
         {entry.examples?.[0] && (
           <span>

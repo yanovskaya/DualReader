@@ -207,6 +207,12 @@ export const LookupWordResponse = zod.object({
       "The looked-up word or phrasal verb (may differ from query if a phrasal verb was detected)",
     ),
   translations: zod.array(zod.string()),
+  synonyms: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      "Closest English synonym for each translation (parallel array, same length as translations)",
+    ),
   partOfSpeech: zod.string().optional(),
   transcription: zod
     .string()
@@ -230,6 +236,12 @@ export const GetRecentLookupsResponseItem = zod.object({
       "The looked-up word or phrasal verb (may differ from query if a phrasal verb was detected)",
     ),
   translations: zod.array(zod.string()),
+  synonyms: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      "Closest English synonym for each translation (parallel array, same length as translations)",
+    ),
   partOfSpeech: zod.string().optional(),
   transcription: zod
     .string()

@@ -6,6 +6,8 @@ export const dictionaryLookupsTable = pgTable("dictionary_lookups", {
   id: serial("id").primaryKey(),
   word: text("word").notNull(),
   translations: text("translations").array().notNull().default([]),
+  /** Closest English synonym for each translation (parallel to translations[]) */
+  synonyms: text("synonyms").array().notNull().default([]),
   partOfSpeech: text("part_of_speech"),
   transcription: text("transcription"),             // AmE IPA
   examples: text("examples").array().notNull().default([]),
