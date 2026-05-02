@@ -414,6 +414,7 @@ export default function ReaderPage() {
   const startBatchRef = useRef(savedProgress?.lastBatch ?? 1);
   // Scroll ratio to restore after paragraphs load (null = nothing pending)
   const pendingRestoreRatio = useRef<number | null>(savedProgress?.scrollRatio ?? null);
+  const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
@@ -629,11 +630,15 @@ export default function ReaderPage() {
         const scrollable = en.scrollHeight - en.clientHeight;
         if (scrollable > 0) {
           en.scrollTop = pendingRestoreRatio.current! * scrollable;
+          // Restore saved ruOffset first, then position RU accordingly.
+          if (pendingRestoreRuOffset.current !== null) {
+            ruOffset.current = pendingRestoreRuOffset.current;
+            pendingRestoreRuOffset.current = null;
+          }
           const ru = ruRef.current;
           if (ru) {
-            const ruS = ru.scrollHeight - ru.clientHeight;
-            // Use proportional position on restore — smooth and consistent
-            ru.scrollTop = Math.max(0, Math.min(ruS, paragraphSync(en, ru, paraPositions.current)));
+            lastProgRuWrite.current = performance.now();
+            ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
           }
         }
         pendingRestoreRatio.current = null;
@@ -677,7 +682,7 @@ export default function ReaderPage() {
   const saveProgressDebounced = useCallback((ratio: number) => {
     if (saveProgressTimer.current) clearTimeout(saveProgressTimer.current);
     saveProgressTimer.current = setTimeout(() => {
-      saveProgress(bookId, { scrollRatio: ratio, lastBatch: currentBatch });
+      saveProgress(bookId, { scrollRatio: ratio, lastBatch: currentBatch, ruOffset: ruOffset.current });
     }, 800);
   }, [bookId, currentBatch]);
 
@@ -759,8 +764,12 @@ export default function ReaderPage() {
     // positions are rebuilt.
     if (paraPositions.current.length > 0) {
       ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
+      // Save so we restore RU position even if user never scrolls EN again.
+      const scrollable = en.scrollHeight - en.clientHeight;
+      const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
+      saveProgressDebounced(ratio);
     }
-  }, []);
+  }, [saveProgressDebounced]);
 
   // Sync theme to body background
   useEffect(() => {

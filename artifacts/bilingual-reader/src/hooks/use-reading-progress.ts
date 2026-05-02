@@ -6,6 +6,8 @@ export interface ReadingProgress {
   scrollRatio: number;
   /** highest batch number that was loaded */
   lastBatch: number;
+  /** px offset of RU panel from paragraph-synced position (ruOffset ref) */
+  ruOffset?: number;
 }
 
 export function saveLastBook(bookId: number): void {
