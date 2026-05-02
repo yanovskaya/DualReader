@@ -16,7 +16,7 @@ import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
-import { isHeadingParagraph, sentenceIdxForCharPos, splitSentences } from "@/lib/sentences";
+import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
 import { SearchPanel } from "@/components/search-panel";
 import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
@@ -750,31 +750,17 @@ export default function ReaderPage() {
     setShowSettings(false);
   }, []);
 
-  // ── Single tap on EN word → scroll RU to the proportionally-equivalent sentence ──
-  // charFraction (0–1) is the tapped word's start offset / EN paragraph length.
-  // We map it to the RU text by the same fraction so mismatched EN/RU sentence
-  // counts (very common) never cause a jump to the wrong sentence.
-  const handleWordClick = useCallback((p: Paragraph, charFraction: number) => {
+  // ── Single tap on EN word → scroll RU to the matching sentence ───────────
+  const handleWordClick = useCallback((p: Paragraph, sentenceIdx: number) => {
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-
-    // Compute which RU sentence corresponds to the tapped EN position.
-    const ruText = p.isTranslated && p.translatedText ? p.translatedText : null;
-    let el: HTMLElement | null = null;
-    if (ruText) {
-      const targetRuChar = Math.round(charFraction * ruText.length);
-      const ruSentenceIdx = sentenceIdxForCharPos(ruText, targetRuChar);
-      // Clamp to the number of sentences actually rendered in the DOM.
-      const ruSentenceCount = splitSentences(ruText).length;
-      const clampedIdx = Math.min(ruSentenceIdx, ruSentenceCount - 1);
-      el = ru.querySelector<HTMLElement>(`[data-ru-sentence="${p.id}-${clampedIdx}"]`);
-    }
-    // Fallback: scroll to the paragraph container if sentence not found.
-    el ??= ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
+    // Find sentence span first, fall back to paragraph div
+    const el =
+      ru.querySelector<HTMLElement>(`[data-ru-sentence="${p.id}-${sentenceIdx}"]`) ??
+      ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
     if (!el) return;
-
-    // Bring the target to the top of the RU panel.
+    // Bring the target to the top of the RU panel
     const delta = el.getBoundingClientRect().top - ru.getBoundingClientRect().top;
     lastProgRuWrite.current = performance.now(); // stamp before write
     ru.scrollTop = clampRu(ru, ru.scrollTop + delta);

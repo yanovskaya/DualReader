@@ -1,16 +1,14 @@
 import { useRef, useCallback } from "react";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { isHeadingParagraph, splitSentences } from "@/lib/sentences";
+import { isHeadingParagraph, sentenceIdxForCharPos, splitSentences } from "@/lib/sentences";
 import type { TextAlign, ThemeColors } from "@/hooks/use-reader-settings";
 
 export interface BookParagraphProps {
   paragraph: Paragraph;
   /** "en" = only English text (clickable words), "ru" = only Russian translation */
   mode: "en" | "ru";
-  /** charFraction = tapped word's start offset / paragraph length (0–1).
-   *  The reader uses this to find the proportionally-equivalent RU sentence,
-   *  which is robust when EN and RU sentence counts differ. */
-  onWordClick?: (p: Paragraph, charFraction: number) => void;
+  /** sentenceIdx = which sentence within the paragraph the tapped word belongs to */
+  onWordClick?: (p: Paragraph, sentenceIdx: number) => void;
   onWordDoubleClick?: (word: string, p: Paragraph) => void;
   colors: ThemeColors;
   fontSize: number;
@@ -115,13 +113,12 @@ export function BookParagraph({
         onWordDoubleClick?.(word, paragraph);
       } else {
         // First tap: schedule the RU scroll after 250 ms.
-        // Pass the fractional position (0–1) of the tapped word within the
-        // EN paragraph. The reader maps this proportionally to the RU text,
-        // so mismatched EN/RU sentence counts never cause a wrong jump.
-        const charFraction = wordCharOffset / Math.max(1, paragraph.originalText.length);
+        // If a second tap arrives within that window it cancels this and
+        // opens the dictionary instead — no unwanted scroll happens.
+        const sentenceIdx = sentenceIdxForCharPos(paragraph.originalText, wordCharOffset);
         clickTimer.current = setTimeout(() => {
           clickTimer.current = null;
-          onWordClick?.(paragraph, charFraction);
+          onWordClick?.(paragraph, sentenceIdx);
         }, 250);
       }
     },

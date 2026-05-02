@@ -1,8 +1,37 @@
-/** Split text into sentences, preserving the original fragments */
+/**
+ * Split text into sentences without false-splitting on abbreviations,
+ * initials, or decimal numbers.
+ *
+ * Strategy: temporarily replace non-boundary dots with a placeholder,
+ * then split on the remaining sentence-ending punctuation, then restore.
+ */
 export function splitSentences(text: string): string[] {
-  // Match sentences ending with .!? including quotes/ellipsis, or the last fragment
-  const parts = text.match(/[^.!?…]+(?:[.!?…]+["'»]?\s*)?/g) || [text];
-  return parts.map(s => s.trim()).filter(Boolean);
+  const PLACEHOLDER = "\x01";
+
+  let s = text;
+
+  // Protect decimal / ordinal numbers:  3.14  →  3\x014
+  s = s.replace(/(\d)\.(\d)/g, `$1${PLACEHOLDER}$2`);
+
+  // Protect common English abbreviations (case-insensitive, word-boundary):
+  // Mr. Mrs. Ms. Dr. Prof. Sr. Jr. St. vs. etc. e.g. i.e. approx. vol. fig. no. pp. ed. op. ca.
+  s = s.replace(
+    /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|approx|vol|fig|no|pp|ed|op|ca)\./gi,
+    (m) => m.slice(0, -1) + PLACEHOLDER,
+  );
+
+  // Protect single uppercase initials:  "J. Smith"  "A. B. C. Title"
+  s = s.replace(/\b([A-Z])\.(?=\s)/g, `$1${PLACEHOLDER}`);
+
+  // Now split on real sentence boundaries:
+  // one or more of .!?… followed by optional closing quote/bracket, then
+  // whitespace + uppercase letter or opening quote (start of next sentence).
+  const parts = s.split(/[.!?…]+["'»\])]?\s+(?=[A-Z\u0400-\u04FF«"(])/);
+
+  // Restore placeholder → "." and trim whitespace.
+  return parts
+    .map((p) => p.replace(new RegExp(PLACEHOLDER, "g"), ".").trim())
+    .filter(Boolean);
 }
 
 /** Find which sentence index a character position belongs to */
