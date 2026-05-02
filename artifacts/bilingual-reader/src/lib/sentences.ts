@@ -23,10 +23,10 @@ export function splitSentences(text: string): string[] {
   // Protect single uppercase initials:  "J. Smith"  "A. B. C. Title"
   s = s.replace(/\b([A-Z])\.(?=\s)/g, `$1${PLACEHOLDER}`);
 
-  // Now split on real sentence boundaries:
-  // one or more of .!?… followed by optional closing quote/bracket, then
-  // whitespace + uppercase letter or opening quote (start of next sentence).
-  const parts = s.split(/[.!?…]+["'»\])]?\s+(?=[A-Z\u0400-\u04FF«"(])/);
+  // Now split on real sentence boundaries.
+  // Use a lookbehind so the punctuation stays with the sentence that ends with it,
+  // and only the whitespace between sentences is consumed by split().
+  const parts = s.split(/(?<=[.!?…]+["'»\])]?)\s+(?=[A-Z\u0400-\u04FF«"(])/);
 
   // Restore placeholder → "." and trim whitespace.
   return parts
