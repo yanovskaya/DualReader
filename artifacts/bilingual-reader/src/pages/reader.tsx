@@ -803,12 +803,9 @@ export default function ReaderPage() {
       setSyncState({ phase: "waitRu", paraId: p.id, enIdx: sentenceIdx });
       const paraEl = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
       if (paraEl) {
-        // Use absolute offset in the scroll container (not viewport-relative).
-        // getBoundingClientRect delta would go negative when the paragraph is
-        // above the current RU viewport, clamping scrollTop to 0 (top of book).
-        const absTop = paraEl.getBoundingClientRect().top - ru.getBoundingClientRect().top + ru.scrollTop;
+        const delta = paraEl.getBoundingClientRect().top - ru.getBoundingClientRect().top;
         lastProgRuWrite.current = performance.now();
-        ru.scrollTop = clampRu(ru, absTop);
+        ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
         if (paraPositions.current.length > 0) {
           ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
         }
@@ -885,8 +882,11 @@ export default function ReaderPage() {
 
   const NAV_H = 50;    // px nav row
   const PROG_H = 3;    // px progress bar
-  const SYNC_BAR_H = syncState.phase !== "off" ? 30 : 0; // sync status bar
-  const HEADER_H = NAV_H + PROG_H + SYNC_BAR_H;
+  // HEADER_H intentionally excludes the sync bar: when chain mode is toggled, the sync
+  // bar appears inside the fixed header as an overlay and does NOT change paddingTop of
+  // the content area. This prevents any layout-driven scroll events on the EN panel that
+  // would cause RU to jump when the chain button is pressed.
+  const HEADER_H = NAV_H + PROG_H;
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text }}>
