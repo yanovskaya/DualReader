@@ -103,7 +103,12 @@ public class UploadController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", book.getId());
             m.put("title", book.getTitle());
+            m.put("author", book.getAuthor());
+            m.put("language", book.getLanguage());
             m.put("totalParagraphs", book.getTotalParagraphs());
+            m.put("translatedParagraphs", 0);
+            m.put("translationStatus", book.getTranslationStatus());
+            m.put("createdAt", book.getCreatedAt().toString());
             return ResponseEntity.status(201).body(m);
 
         } catch (Exception e) {

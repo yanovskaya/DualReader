@@ -244,8 +244,7 @@ curl http://localhost:8080/books
 
   ```bash
   curl -F "file=@book.epub" -F "title=Test" -F "author=PG" \
-       -F "sourceLang=en" -F "targetLang=ru" \
-       http://localhost:8080/upload
+       http://localhost:8080/books/upload
   ```
 
   Открой созданную книгу через `GET /books/{id}/paragraphs` — текст читаемый?

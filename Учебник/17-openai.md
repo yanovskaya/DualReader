@@ -171,7 +171,7 @@ curl http://localhost:8080/test-ai
 
   1. Почему мы используем встроенный `java.net.http.HttpClient` вместо `RestTemplate`/`WebClient`?
   2. Зачем выносить `OPENAI_API_KEY` в переменную окружения, а не в `application.properties`?
-  3. Что делает `response_format = {"type": "json_object"}` и почему это удобно?
+  3. Зачем мы создаём один `HttpClient` в конструкторе и переиспользуем — что плохого было бы создавать новый на каждый запрос?
 
   <details>
   <summary>Мини-упражнение: сделай таймаут</summary>

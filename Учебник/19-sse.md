@@ -214,11 +214,14 @@ data: {"done":true}
   <details>
   <summary>Мини-упражнение: проверь SSE из терминала</summary>
 
+  У нас прогресс приходит **из самого** `POST /translate`, отдельного эндпоинта `/translate-progress` нет. Запусти и не закрывай соединение:
+
   ```bash
-  curl -N http://localhost:8080/books/1/translate-progress
+  curl -N -X POST http://localhost:8080/books/1/translate \
+       -H 'Content-Type: application/json'
   ```
 
-  Флаг `-N` отключает буферизацию — увидишь события по мере поступления. Запусти параллельно перевод (`POST /books/1/translate`) и смотри прогресс в реальном времени.
+  Флаг `-N` отключает буферизацию `curl` — увидишь `data: {...}` по мере поступления, а не одним блоком в конце.
   </details>
 
   ## ➡️ Дальше
