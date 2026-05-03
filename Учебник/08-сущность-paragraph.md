@@ -48,7 +48,8 @@ public class Paragraph {
 
 - Поле `bookId` — простой `Integer`. Можно было бы сделать `@ManyToOne private Book book;`, но это тянет за собой автоматические JOIN-ы и сложности. Простое поле — быстрее и понятнее. Связь между книгой и параграфом проверяем сами в сервисах.
 - `columnDefinition = "text"` для `originalText` — иначе JPA по умолчанию создал бы `VARCHAR(255)`, а у нас могут быть длинные абзацы.
-- `boolean isTranslated` — Lombok сгенерирует `isTranslated()` (геттер для boolean) и `setTranslated(boolean)`.
+
+> ⚠️ **Странность Lombok с `boolean isTranslated`:** для поля `private boolean isTranslated` Lombok сгенерирует геттер `isTranslated()` и сеттер `setTranslated(...)` — **без** префикса `is`. То есть в коде ниже мы будем писать `p.setTranslated(true)`, а не `p.setIsTranslated(true)`. Это поведение JavaBeans-конвенции: для `boolean`-полей с префиксом `is` префикс «съедается» при генерации геттера/сеттера. Если переименовать поле в `translated` (без `is`), Lombok сгенерит ровно то же самое.
 
 ## 2. Репозиторий
 
