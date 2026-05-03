@@ -142,6 +142,45 @@ public class EpubParser {
 
 Делает класс бином. То же что `@Service`, но `@Component` нейтрально (не сервис, не репозиторий — просто компонент).
 
+### `throws IOException` — проверяемые исключения
+
+```java
+public EpubResult parse(byte[] data) throws IOException {
+```
+
+В Java есть два сорта исключений:
+- **Unchecked** (наследники `RuntimeException`) — `NullPointerException`, `IllegalArgumentException`. Можно бросать молча, ловить — по желанию. Как в JS.
+- **Checked** (всё остальное, например `IOException`, `SQLException`) — компилятор **заставляет** тебя либо обернуть в `try/catch`, либо объявить `throws` в сигнатуре.
+
+`ZipInputStream.getNextEntry()` объявлен как `throws IOException` — значит, и наш `parse` обязан либо ловить, либо «прокидывать дальше». Мы выбрали второе: пусть с этим разберётся вызывающая сторона (контроллер, который оборачивает в `try/catch`).
+
+В JS такого нет — там любой код может бросить что угодно, и компилятор молчит. В Java это часть сигнатуры метода.
+
+### Regex-флаги `(?i)` и `(?is)`
+
+```java
+text.replaceAll("(?is)<script[\\s\\S]*?</script>", "");
+```
+
+В Java регулярные флаги можно писать **внутри самого паттерна**:
+- `(?i)` — **CASE_INSENSITIVE**. Чтобы `<SCRIPT>` тоже совпадало.
+- `(?s)` — **DOTALL** («single line»). По умолчанию `.` не матчит `\n`. С `(?s)` — матчит всё подряд, включая переводы строк.
+- `(?is)` — оба сразу.
+
+Зачем это нужно? Тег `<script>...</script>` может занимать несколько строк. Без `(?s)` точка не пройдёт через `\n` и regex не найдёт совпадения. Альтернатива — `[\\s\\S]` (любой символ, включая перевод строки), её мы как раз и используем — `(?s)` тут перестраховка.
+
+Эквивалент через flags-аргумент: `Pattern.compile("...", Pattern.CASE_INSENSITIVE | Pattern.DOTALL)`.
+
+### Метод-ссылка `Map.Entry::getValue`
+
+```java
+entries.entrySet().stream()
+    .filter(e -> e.getKey().endsWith("/" + stripped) || ...)
+    .map(Map.Entry::getValue)
+```
+
+`Map.Entry::getValue` — это «возьми каждый `Entry` и вызови у него `.getValue()`». Эквивалент лямбды `e -> e.getValue()`. Это форма `Class::instanceMethod` — см. таблицу метод-ссылок в шаге 07.
+
 ### `record EpubResult`
 
 ```java

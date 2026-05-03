@@ -28,6 +28,10 @@ spring.servlet.multipart.max-request-size=50MB
 ```java
 @Transactional
 public Book createBookFromParagraphs(String title, String author, List<String> paragraphTexts) {
+    // ↑ ВАЖНО: это НОВЫЙ метод РЯДОМ со старым createBook(...). Старый не удаляй!
+    //   createBook(title, author, language, content)        — берёт сырой текст, сам разбивает.
+    //   createBookFromParagraphs(title, author, list)       — получает уже готовый список.
+    //   Зачем два? Файлы (TXT/EPUB) уже разбиты парсером, нет смысла склеивать-разбивать заново.
     Book book = new Book();
     book.setTitle(title);
     book.setAuthor(author);

@@ -133,6 +133,25 @@ public class BookController {
 - `bookToMap` — превращает сущность в `Map` для JSON-ответа. Зачем не отдавать сущность напрямую? Чтобы контролировать формат и не зависеть от изменений модели.
 - `LinkedHashMap` — сохраняет порядок ключей в JSON.
 
+🧠 **Метод-ссылка `this::bookToMap`:**
+
+```java
+.stream().map(this::bookToMap).toList()
+```
+
+`this::bookToMap` — это **method reference**, короткая запись для лямбды `b -> this.bookToMap(b)`. То есть «возьми каждую книгу из потока и пропусти через мой собственный метод `bookToMap`».
+
+В Java есть четыре формы метод-ссылок (запомни — встретятся ещё много раз):
+
+| Форма | Пример | Эквивалентная лямбда |
+|---|---|---|
+| `instance::method` | `this::bookToMap` | `b -> this.bookToMap(b)` |
+| `Class::staticMethod` | `Integer::parseInt` | `s -> Integer.parseInt(s)` |
+| `Class::instanceMethod` | `String::trim` | `s -> s.trim()` |
+| `Class::new` | `ArrayList::new` | `() -> new ArrayList<>()` |
+
+Все четыре делают одно и то же — превращают «именованный метод» в «значение-функцию», которое можно передать в `map`, `filter`, `forEach` и т.п.
+
 ## ✅ Проверка
 
 Перезапусти сервер. Затем:
