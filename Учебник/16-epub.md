@@ -160,6 +160,62 @@ try (ZipInputStream zip = new ZipInputStream(...)) {
 
 Скобки после `try` — **try-with-resources**. Ресурс автоматически закроется в конце блока. Используй для всего, что implements `AutoCloseable`.
 
+### Manifest и spine — порядок чтения глав
+
+Файл `.opf` (Open Packaging Format) — это XML-«оглавление» книги. Внутри две важные секции:
+
+```xml
+<manifest>
+  <item id="ch1" href="text/chapter1.xhtml" media-type="application/xhtml+xml"/>
+  <item id="ch2" href="text/chapter2.xhtml" media-type="application/xhtml+xml"/>
+  <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>
+</manifest>
+<spine>
+  <itemref idref="cover"/>
+  <itemref idref="ch1"/>
+  <itemref idref="ch2"/>
+</spine>
+```
+
+- **`manifest`** — список **всех** файлов в книге с уникальным `id` и путём `href`. Просто инвентарь.
+- **`spine`** — **порядок чтения**: какой файл идёт первым, вторым, третьим. Ссылается по `id` через `idref`.
+
+Поэтому код делает **два прохода** по `.opf`:
+
+```java
+// Проход 1 — собираем словарь id → href из manifest
+Map<String, String> idToHref = new HashMap<>();
+Matcher manifestM = Pattern.compile("<item[^>]+id=\"([^\"]+)\"[^>]+href=\"([^\"]+)\"", ...)
+        .matcher(opfContent);
+while (manifestM.find()) {
+    idToHref.put(manifestM.group(1), manifestM.group(2));
+}
+
+// Проход 2 — идём по spine в правильном порядке и переводим id в путь
+Matcher spineM = Pattern.compile("idref=\"([^\"]+)\"", ...).matcher(opfContent);
+while (spineM.find()) {
+    String href = idToHref.get(spineM.group(1));
+    if (href != null) contentFiles.add(opfDir + href);
+}
+```
+
+Если бы мы просто взяли все `.html` файлы из ZIP, главы могли бы пойти в неправильном порядке (по алфавиту: `chapter10` оказался бы между `chapter1` и `chapter2`). `spine` — единственный надёжный источник порядка.
+
+`opfDir` — папка, где лежит сам `.opf`. Пути в `manifest` относительные, поэтому приклеиваем префикс.
+
+### Fallback на отсортированные файлы
+
+```java
+if (contentFiles.isEmpty()) {
+    entries.keySet().stream()
+            .filter(n -> n.matches("(?i).*\\.(html|xhtml|htm)") && !n.contains("toc"))
+            .sorted()
+            .forEach(contentFiles::add);
+}
+```
+
+Если `.opf` не нашёлся или внутри нет `spine` (битый/нестандартный EPUB) — берём все HTML-файлы по алфавиту, исключая оглавление (`toc.html`). Лучше что-то, чем ничего.
+
 ### Извлечение текста из HTML
 
 Регулярки удаляют:
