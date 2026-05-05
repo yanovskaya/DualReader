@@ -6,3 +6,9 @@ id = "mSpKMwy5kKOEoTXgHu0oW"
 uri = "file://artifacts/bilingual-reader/public/icon-512.png"
 type = "image"
 title = "Иконка Lingua (512×512)"
+
+[[outputs]]
+id = "oMB__VrOZyTdwJ8o8IvDC"
+uri = "file://ЛОКАЛЬНЫЙ-ЗАПУСК.md"
+type = "text"
+title = "Локальный запуск Lingua"
