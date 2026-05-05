@@ -7,6 +7,8 @@ import com.lingua.api.service.BookService;
 import com.lingua.api.service.TranslationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -22,13 +24,15 @@ public class BookController {
 
     // ── GET /books ─────────────────────────────────────────────────────────
     @GetMapping("/books")
-    public List<Map<String, Object>> listBooks() {
-        return bookService.listBooks().stream().map(this::bookToMap).toList();
+    public List<Map<String, Object>> listBooks(@AuthenticationPrincipal Jwt jwt) {
+        return bookService.listBooks(userId(jwt)).stream().map(this::bookToMap).toList();
     }
 
     // ── POST /books ────────────────────────────────────────────────────────
     @PostMapping("/books")
-    public ResponseEntity<?> createBook(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> createBook(
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal Jwt jwt) {
         String title = (String) body.get("title");
         String author = (String) body.get("author");
         String language = (String) body.get("language");
@@ -41,21 +45,28 @@ public class BookController {
             return ResponseEntity.badRequest().body(Map.of("error", "content is required"));
         }
 
-        Book book = bookService.createBook(title, author, language, content);
+        Book book = bookService.createBook(title, author, language, content, userId(jwt));
         return ResponseEntity.status(201).body(bookToMap(book));
     }
 
     // ── GET /books/:id ─────────────────────────────────────────────────────
     @GetMapping("/books/{id}")
-    public ResponseEntity<?> getBook(@PathVariable Integer id) {
-        return bookService.getBook(id)
+    public ResponseEntity<?> getBook(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal Jwt jwt) {
+        return bookService.getBook(id, userId(jwt))
                 .map(b -> ResponseEntity.ok(bookToMap(b)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     // ── DELETE /books/:id ──────────────────────────────────────────────────
     @DeleteMapping("/books/{id}")
-    public ResponseEntity<Void> deleteBook(@PathVariable Integer id) {
+    public ResponseEntity<Void> deleteBook(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal Jwt jwt) {
+        if (bookService.getBook(id, userId(jwt)).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
         bookService.deleteBook(id);
         return ResponseEntity.noContent().build();
     }
@@ -65,8 +76,9 @@ public class BookController {
     public ResponseEntity<?> getParagraphs(
             @PathVariable Integer id,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize) {
-        if (bookService.getBook(id).isEmpty()) {
+            @RequestParam(defaultValue = "20") int pageSize,
+            @AuthenticationPrincipal Jwt jwt) {
+        if (bookService.getBook(id, userId(jwt)).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         page = Math.max(1, page);
@@ -76,8 +88,10 @@ public class BookController {
 
     // ── GET /books/:id/chapters ────────────────────────────────────────────
     @GetMapping("/books/{id}/chapters")
-    public ResponseEntity<?> getChapters(@PathVariable Integer id) {
-        if (bookService.getBook(id).isEmpty()) {
+    public ResponseEntity<?> getChapters(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal Jwt jwt) {
+        if (bookService.getBook(id, userId(jwt)).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(Map.of("chapters", bookService.getChapters(id)));
@@ -88,11 +102,12 @@ public class BookController {
     public ResponseEntity<?> search(
             @PathVariable Integer id,
             @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "40") int limit) {
+            @RequestParam(defaultValue = "40") int limit,
+            @AuthenticationPrincipal Jwt jwt) {
         if (q == null || q.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing query parameter q"));
         }
-        if (bookService.getBook(id).isEmpty()) {
+        if (bookService.getBook(id, userId(jwt)).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         limit = Math.min(80, Math.max(1, limit));
@@ -101,8 +116,10 @@ public class BookController {
 
     // ── GET /books/:id/stats ───────────────────────────────────────────────
     @GetMapping("/books/{id}/stats")
-    public ResponseEntity<?> getStats(@PathVariable Integer id) {
-        if (bookService.getBook(id).isEmpty()) {
+    public ResponseEntity<?> getStats(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal Jwt jwt) {
+        if (bookService.getBook(id, userId(jwt)).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(bookService.getStats(id));
@@ -110,8 +127,10 @@ public class BookController {
 
     // ── GET /books/:id/translation-status ─────────────────────────────────
     @GetMapping("/books/{id}/translation-status")
-    public ResponseEntity<?> translationStatus(@PathVariable Integer id) {
-        return bookService.getBook(id).map(book -> {
+    public ResponseEntity<?> translationStatus(
+            @PathVariable Integer id,
+            @AuthenticationPrincipal Jwt jwt) {
+        return bookService.getBook(id, userId(jwt)).map(book -> {
             int pct = book.getTotalParagraphs() > 0
                     ? Math.round((float) book.getTranslatedParagraphs() / book.getTotalParagraphs() * 100)
                     : 0;
@@ -127,16 +146,20 @@ public class BookController {
 
     // ── POST /books/:id/translate  (SSE) ────────────────────────────────
     @PostMapping("/books/{id}/translate")
-    public SseEmitter translate(
+    public ResponseEntity<?> translate(
             @PathVariable Integer id,
-            @RequestBody(required = false) Map<String, Object> body) {
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal Jwt jwt) {
+        if (bookService.getBook(id, userId(jwt)).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
         int batchSize = 8;
         if (body != null && body.get("batchSize") != null) {
             try { batchSize = Integer.parseInt(body.get("batchSize").toString()); } catch (Exception ignored) {}
         }
         SseEmitter emitter = new SseEmitter(300_000L);
         translationService.translateBook(id, batchSize, emitter);
-        return emitter;
+        return ResponseEntity.ok(emitter);
     }
 
     // ── GET /paragraphs/:id/translation ───────────────────────────────────
@@ -148,6 +171,10 @@ public class BookController {
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
+    private String userId(Jwt jwt) {
+        return jwt.getSubject();
+    }
+
     private Map<String, Object> bookToMap(Book b) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", b.getId());

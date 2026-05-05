@@ -6,11 +6,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface BookRepository extends JpaRepository<Book, Integer> {
 
-    List<Book> findAllByOrderByCreatedAtAsc();
+    List<Book> findAllByUserIdOrderByCreatedAtAsc(String userId);
+
+    Optional<Book> findByIdAndUserId(Integer id, String userId);
 
     @Query(value = "SELECT SUM(array_length(regexp_split_to_array(trim(original_text), '\\s+'), 1)) FROM paragraphs WHERE book_id = :bookId", nativeQuery = true)
     Long countWordsByBookId(Integer bookId);

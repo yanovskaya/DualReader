@@ -1,7 +1,9 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { BookOpen, Plus, Library } from "lucide-react";
+import { UserButton } from "@clerk/react";
 import { cn } from "@/lib/utils";
+import { clerkAppearance } from "@/lib/clerk-appearance";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -36,6 +38,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <Plus className="h-4 w-4" />
               Add Book
             </Link>
+            <UserButton appearance={clerkAppearance} />
           </nav>
         </div>
       </header>

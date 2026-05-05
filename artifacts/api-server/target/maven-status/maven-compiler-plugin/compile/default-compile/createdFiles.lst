@@ -14,6 +14,7 @@ com/lingua/api/config/DatabaseConfig.class
 com/lingua/api/service/DictionaryService.class
 com/lingua/api/service/TranslationService.class
 com/lingua/api/repository/BookRepository.class
+com/lingua/api/config/SecurityConfig.class
 com/lingua/api/controller/UploadController.class
 com/lingua/api/service/BookService.class
 com/lingua/api/LinguaApiApplication.class

@@ -20,22 +20,23 @@ public class BookService {
     private final BookRepository bookRepo;
     private final ParagraphRepository paragraphRepo;
 
-    public List<Book> listBooks() {
-        return bookRepo.findAllByOrderByCreatedAtAsc();
+    public List<Book> listBooks(String userId) {
+        return bookRepo.findAllByUserIdOrderByCreatedAtAsc(userId);
     }
 
-    public Optional<Book> getBook(Integer id) {
-        return bookRepo.findById(id);
+    public Optional<Book> getBook(Integer id, String userId) {
+        return bookRepo.findByIdAndUserId(id, userId);
     }
 
     @Transactional
-    public Book createBook(String title, String author, String language, String content) {
+    public Book createBook(String title, String author, String language, String content, String userId) {
         List<String> rawParagraphs = Arrays.stream(content.split("\n\n+"))
                 .map(String::trim)
                 .filter(p -> p.length() > 10)
                 .toList();
 
         Book book = new Book();
+        book.setUserId(userId);
         book.setTitle(title);
         book.setAuthor(author);
         book.setLanguage(language != null ? language : "en");
@@ -49,8 +50,9 @@ public class BookService {
     }
 
     @Transactional
-    public Book createBookFromParagraphs(String title, String author, List<String> paragraphTexts) {
+    public Book createBookFromParagraphs(String title, String author, List<String> paragraphTexts, String userId) {
         Book book = new Book();
+        book.setUserId(userId);
         book.setTitle(title);
         book.setAuthor(author);
         book.setLanguage("en");
