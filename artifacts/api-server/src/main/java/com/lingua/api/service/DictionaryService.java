@@ -119,6 +119,21 @@ public class DictionaryService {
         List<String> examples = toList(ai.get("examples"), null);
         List<String> exampleTranslations = toList(ai.get("exampleTranslations"), null);
 
+        // Don't cache fallback results
+        boolean isFallback = translations.size() == 1 && "перевод недоступен".equals(translations.get(0));
+        if (isFallback) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("word", resultWord);
+            result.put("translations", translations);
+            result.put("synonyms", synonyms);
+            result.put("partOfSpeech", partOfSpeech);
+            result.put("transcription", transcription);
+            result.put("examples", examples);
+            result.put("exampleTranslations", exampleTranslations);
+            result.put("lookedUpAt", Instant.now().toString());
+            return result;
+        }
+
         // Insert into DB using JDBC for array support
         jdbc.update(con -> {
             var ps = con.prepareStatement(
