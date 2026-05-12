@@ -13,6 +13,5 @@
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/controller/DictionaryController.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/OpenAiService.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/model/Book.java
-/home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/config/SecurityConfig.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/model/Paragraph.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/controller/BookController.java

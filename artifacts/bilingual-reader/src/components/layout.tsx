@@ -1,9 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { BookOpen, Plus, Library } from "lucide-react";
-import { UserButton } from "@clerk/react";
 import { cn } from "@/lib/utils";
-import { clerkAppearance } from "@/lib/clerk-appearance";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -16,10 +14,10 @@ export function Layout({ children }: { children: ReactNode }) {
             <BookOpen className="h-6 w-6 text-primary" />
             <span className="font-serif font-bold text-xl tracking-tight text-primary">Lingua</span>
           </Link>
-          
+
           <nav className="flex items-center gap-6 text-sm font-medium">
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               className={cn(
                 "flex items-center gap-2 transition-colors hover:text-primary",
                 location === "/" ? "text-primary" : "text-muted-foreground"
@@ -28,8 +26,8 @@ export function Layout({ children }: { children: ReactNode }) {
               <Library className="h-4 w-4" />
               Library
             </Link>
-            <Link 
-              href="/upload" 
+            <Link
+              href="/upload"
               className={cn(
                 "flex items-center gap-2 transition-colors hover:text-primary",
                 location === "/upload" ? "text-primary" : "text-muted-foreground"
@@ -38,7 +36,6 @@ export function Layout({ children }: { children: ReactNode }) {
               <Plus className="h-4 w-4" />
               Add Book
             </Link>
-            <UserButton appearance={clerkAppearance} />
           </nav>
         </div>
       </header>

@@ -7,6 +7,7 @@ import com.lingua.api.repository.ParagraphRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,23 +21,23 @@ public class BookService {
     private final BookRepository bookRepo;
     private final ParagraphRepository paragraphRepo;
 
-    public List<Book> listBooks(String userId) {
-        return bookRepo.findAllByUserIdOrderByCreatedAtAsc(userId);
+    public List<Book> listBooks() {
+        return bookRepo.findAll(Sort.by(Sort.Direction.ASC, "createdAt"));
     }
 
-    public Optional<Book> getBook(Integer id, String userId) {
-        return bookRepo.findByIdAndUserId(id, userId);
+    public Optional<Book> getBook(Integer id) {
+        return bookRepo.findById(id);
     }
 
     @Transactional
-    public Book createBook(String title, String author, String language, String content, String userId) {
+    public Book createBook(String title, String author, String language, String content) {
         List<String> rawParagraphs = Arrays.stream(content.split("\n\n+"))
                 .map(String::trim)
                 .filter(p -> p.length() > 10)
                 .toList();
 
         Book book = new Book();
-        book.setUserId(userId);
+        book.setUserId("default");
         book.setTitle(title);
         book.setAuthor(author);
         book.setLanguage(language != null ? language : "en");
@@ -50,9 +51,9 @@ public class BookService {
     }
 
     @Transactional
-    public Book createBookFromParagraphs(String title, String author, List<String> paragraphTexts, String userId) {
+    public Book createBookFromParagraphs(String title, String author, List<String> paragraphTexts) {
         Book book = new Book();
-        book.setUserId(userId);
+        book.setUserId("default");
         book.setTitle(title);
         book.setAuthor(author);
         book.setLanguage("en");

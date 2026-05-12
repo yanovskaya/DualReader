@@ -5,8 +5,6 @@ import com.lingua.api.service.BookService;
 import com.lingua.api.service.EpubParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,8 +24,7 @@ public class UploadController {
     public ResponseEntity<?> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "title", required = false) String customTitle,
-            @RequestParam(value = "author", required = false) String customAuthor,
-            @AuthenticationPrincipal Jwt jwt) {
+            @RequestParam(value = "author", required = false) String customAuthor) {
         if (file == null || file.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
         }
@@ -60,7 +57,7 @@ public class UploadController {
             }
 
             String author = customAuthor != null && !customAuthor.isBlank() ? customAuthor.trim() : null;
-            Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs, jwt.getSubject());
+            Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs);
 
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", book.getId());
