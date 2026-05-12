@@ -14,16 +14,29 @@ import java.util.Map;
 @Service
 public class OpenAiService {
 
-    private static final String API_URL = "https://api.openai.com/v1/chat/completions";
     private final HttpClient httpClient;
     private final ObjectMapper mapper = new ObjectMapper();
     private final String apiKey;
+    private final String apiUrl;
 
     public OpenAiService() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
                 .build();
-        this.apiKey = System.getenv("OPENAI_API_KEY");
+
+        // Prefer Replit AI Integration credentials, fall back to direct OpenAI key
+        String integrationBaseUrl = System.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL");
+        String integrationApiKey  = System.getenv("AI_INTEGRATIONS_OPENAI_API_KEY");
+
+        if (integrationBaseUrl != null && !integrationBaseUrl.isBlank()) {
+            String base = integrationBaseUrl.replaceAll("/+$", "");
+            this.apiUrl = base + "/chat/completions";
+            this.apiKey = (integrationApiKey != null) ? integrationApiKey : "dummy";
+        } else {
+            this.apiUrl = "https://api.openai.com/v1/chat/completions";
+            this.apiKey = System.getenv("OPENAI_API_KEY");
+        }
     }
 
     public String complete(String model, int maxTokens, List<Map<String, String>> messages) {
@@ -37,7 +50,7 @@ public class OpenAiService {
             String jsonBody = mapper.writeValueAsString(body);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(API_URL))
+                    .uri(URI.create(apiUrl))
                     .timeout(Duration.ofSeconds(120))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + apiKey)
@@ -53,7 +66,7 @@ public class OpenAiService {
             Map<?, ?> message = (Map<?, ?>) first.get("message");
             return message == null ? "" : String.valueOf(message.get("content"));
         } catch (Exception e) {
-            throw new RuntimeException("OpenAI API call failed: " + e.getMessage(), e);
+            throw new RuntimeException("OpenAI API call failed [url=" + apiUrl + "]: " + e.getMessage(), e);
         }
     }
 }
