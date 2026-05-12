@@ -14,7 +14,7 @@ import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Link2 } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
@@ -430,28 +430,6 @@ export default function ReaderPage() {
   // Global toggle: show or hide Russian translations
   const [showTranslations, setShowTranslations] = useState(true);
 
-  // ── Sentence sync mode ────────────────────────────────────────────────────
-  // Allows user to manually anchor EN sentence N ↔ RU sentence M for a paragraph.
-  // The offset (M - N) is stored per paragraph in localStorage and applied to
-  // all subsequent word-tap lookups for that paragraph.
-  type SyncPhase =
-    | { phase: "off" }
-    | { phase: "waitEn" }
-    | { phase: "waitRu"; paraId: number; enIdx: number };
-  const [syncState, setSyncState] = useState<SyncPhase>({ phase: "off" });
-  // Keep a ref so callbacks always see the latest state without re-creating.
-  const syncStateRef = useRef<SyncPhase>({ phase: "off" });
-  syncStateRef.current = syncState;
-  // Per-paragraph sentence offset: paraId → (ruSentenceIdx - enSentenceIdx).
-  const [syncAnchors, setSyncAnchors] = useState<Record<number, number>>(() => {
-    try { return JSON.parse(localStorage.getItem("lingua-sent-anchors") ?? "{}") as Record<number, number>; }
-    catch { return {}; }
-  });
-  const syncAnchorsRef = useRef(syncAnchors);
-  syncAnchorsRef.current = syncAnchors;
-  const toggleSyncMode = useCallback(() => {
-    setSyncState(s => s.phase === "off" ? { phase: "waitEn" } : { phase: "off" });
-  }, []);
   // Chapter navigation: id of paragraph we want to scroll to after load
   const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
@@ -786,64 +764,9 @@ export default function ReaderPage() {
     document.documentElement.style.background = colors.bg;
   }, [colors.bg]);
 
-  const handleWordDoubleClick = useCallback((word: string, p: Paragraph) => {
+  const handleWordClick = useCallback((word: string, p: Paragraph) => {
     setPanel({ kind: "dict", word, paragraph: p });
     setShowSettings(false);
-  }, []);
-
-  // ── Single tap on EN word ─────────────────────────────────────────────────
-  // In normal mode: scroll RU to matching sentence, applying any stored offset.
-  // In sync mode (waitEn or waitRu): record the EN sentence and scroll RU to
-  // the paragraph so user can tap the corresponding RU sentence.
-  const handleWordClick = useCallback((p: Paragraph, sentenceIdx: number) => {
-    const ru = ruRef.current;
-    const en = enRef.current;
-    if (!ru || !en) return;
-
-    const state = syncStateRef.current;
-    if (state.phase === "waitEn" || state.phase === "waitRu") {
-      // Select/re-select EN sentence; scroll RU to show the same paragraph.
-      setSyncState({ phase: "waitRu", paraId: p.id, enIdx: sentenceIdx });
-      const paraEl = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
-      if (paraEl) {
-        const delta = paraEl.getBoundingClientRect().top - ru.getBoundingClientRect().top;
-        lastProgRuWrite.current = performance.now();
-        ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
-        if (paraPositions.current.length > 0) {
-          ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
-        }
-      }
-      return;
-    }
-
-    // Normal mode — apply stored paragraph offset then find the sentence element.
-    const offset = syncAnchorsRef.current[p.id] ?? 0;
-    const adjustedIdx = Math.max(0, sentenceIdx + offset);
-    const el =
-      ru.querySelector<HTMLElement>(`[data-ru-sentence="${p.id}-${adjustedIdx}"]`) ??
-      ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
-    if (!el) return;
-    const delta = el.getBoundingClientRect().top - ru.getBoundingClientRect().top;
-    lastProgRuWrite.current = performance.now();
-    ru.scrollTop = clampRu(ru, ru.scrollTop + delta);
-    if (paraPositions.current.length > 0) {
-      ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
-    }
-  }, []);
-
-  // ── RU sentence tap in sync mode → save alignment anchor ─────────────────
-  const handleRuSentenceClick = useCallback((paraId: number, ruIdx: number) => {
-    const state = syncStateRef.current;
-    if (state.phase !== "waitRu" || state.paraId !== paraId) return;
-    const offset = ruIdx - state.enIdx;
-    setSyncAnchors(prev => {
-      const next = { ...prev, [paraId]: offset };
-      try { localStorage.setItem("lingua-sent-anchors", JSON.stringify(next)); } catch { /* ignore */ }
-      syncAnchorsRef.current = next;
-      return next;
-    });
-    // Stay in sync mode — user can continue anchoring more paragraphs.
-    setSyncState({ phase: "waitEn" });
   }, []);
 
   const closePanel = useCallback(() => setPanel({ kind: "hidden" }), []);
@@ -967,19 +890,6 @@ export default function ReaderPage() {
           <button onClick={() => { setShowSettings(s => !s); setShowToc(false); setShowSearch(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Settings2 size={17} />
           </button>
-          {/* Sentence sync mode button */}
-          <button
-            onClick={toggleSyncMode}
-            title="Привязка предложений EN↔RU"
-            style={{
-              height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center",
-              borderRadius: "50%", border: "none", cursor: "pointer",
-              background: syncState.phase !== "off" ? colors.accent + "22" : "transparent",
-              color: syncState.phase !== "off" ? colors.accent : colors.muted,
-            }}
-          >
-            <Link2 size={15} />
-          </button>
           {/* Hide header button */}
           <button
             onClick={() => setShowHeader(false)}
@@ -990,22 +900,6 @@ export default function ReaderPage() {
           </button>
         </div>
 
-        {/* Sync mode status bar — shown only when sync mode is active */}
-        {syncState.phase !== "off" && (
-          <div style={{
-            padding: "5px 14px 7px",
-            fontSize: 11,
-            lineHeight: 1.4,
-            display: "flex", alignItems: "center", gap: 6,
-            borderTop: `1px solid ${colors.border}`,
-            color: syncState.phase === "waitRu" ? colors.accent : colors.muted,
-          }}>
-            <Link2 size={10} style={{ flexShrink: 0 }} />
-            {syncState.phase === "waitEn"
-              ? "Тапните слово в англ. тексте — выберите предложение для привязки"
-              : "Предложение выбрано. Тапните соответствующее предложение в рус. переводе"}
-          </div>
-        )}
       </header>
 
 
@@ -1038,12 +932,6 @@ export default function ReaderPage() {
                 paragraph={p}
                 mode="en"
                 onWordClick={handleWordClick}
-                onWordDoubleClick={handleWordDoubleClick}
-                highlightSentenceIdx={
-                  syncState.phase === "waitRu" && syncState.paraId === p.id
-                    ? syncState.enIdx
-                    : undefined
-                }
                 colors={colors}
                 fontSize={settings.fontSize}
                 fontFamily={bodyFont}
@@ -1111,11 +999,6 @@ export default function ReaderPage() {
                   <BookParagraph
                     paragraph={p}
                     mode="ru"
-                    onSentenceClick={
-                      syncState.phase === "waitRu" && syncState.paraId === p.id
-                        ? handleRuSentenceClick
-                        : undefined
-                    }
                     colors={colors}
                     fontSize={Math.max(10, Math.round(settings.fontSize * 0.75))}
                     fontFamily={bodyFont}
