@@ -86,6 +86,11 @@ public class BookService {
     }
 
     @Transactional
+    public void updateProgress(Integer bookId, Double scrollRatio, Integer lastBatch, Double ruOffset) {
+        bookRepo.updateProgress(bookId, scrollRatio, lastBatch, ruOffset);
+    }
+
+    @Transactional
     public void deleteBook(Integer id) {
         bookRepo.deleteById(id);
     }

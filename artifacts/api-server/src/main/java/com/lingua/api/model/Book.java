@@ -38,4 +38,13 @@ public class Book {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+
+    @Column(name = "scroll_ratio")
+    private Double scrollRatio;
+
+    @Column(name = "last_batch")
+    private Integer lastBatch;
+
+    @Column(name = "ru_offset")
+    private Double ruOffset;
 }

@@ -19,7 +19,7 @@ import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
 import { SearchPanel } from "@/components/search-panel";
-import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
+import { saveLastBook, saveProgress, loadProgress, saveProgressToServer, loadProgressFromServer } from "@/hooks/use-reading-progress";
 import {
   useReaderSettings,
   THEMES,
@@ -407,7 +407,7 @@ export default function ReaderPage() {
   const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign } = useReaderSettings();
   const colors = THEMES[settings.theme];
 
-  // Load saved reading progress for this book (before first render)
+  // Load saved reading progress for this book — localStorage is instant (no flicker)
   const savedProgress = bookId ? loadProgress(bookId) : null;
 
   // Incremental batch loading — start from saved batch if available
@@ -421,6 +421,28 @@ export default function ReaderPage() {
   // Scroll ratio to restore after paragraphs load (null = nothing pending)
   const pendingRestoreRatio = useRef<number | null>(savedProgress?.scrollRatio ?? null);
   const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
+
+  // On mount, fetch authoritative progress from server (survives browser cache clears)
+  useEffect(() => {
+    if (!bookId) return;
+    loadProgressFromServer(bookId).then(sp => {
+      if (!sp || sp.scrollRatio === 0) return;
+      // Prefer server if it is at least as far as localStorage
+      const localBatch = savedProgress?.lastBatch ?? 1;
+      if (sp.lastBatch >= localBatch) {
+        pendingRestoreRatio.current = sp.scrollRatio;
+        pendingRestoreRuOffset.current = sp.ruOffset ?? null;
+        if (sp.lastBatch > currentBatch) {
+          setCurrentBatch(sp.lastBatch);
+          startBatchRef.current = sp.lastBatch;
+        }
+        // Sync localStorage with server value
+        saveProgress(bookId, sp);
+      }
+    });
+  // intentionally run only once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
@@ -666,7 +688,9 @@ export default function ReaderPage() {
   const saveProgressDebounced = useCallback((ratio: number) => {
     if (saveProgressTimer.current) clearTimeout(saveProgressTimer.current);
     saveProgressTimer.current = setTimeout(() => {
-      saveProgress(bookId, { scrollRatio: ratio, lastBatch: currentBatch, ruOffset: ruOffset.current });
+      const progress = { scrollRatio: ratio, lastBatch: currentBatch, ruOffset: ruOffset.current };
+      saveProgress(bookId, progress);
+      saveProgressToServer(bookId, progress);
     }, 800);
   }, [bookId, currentBatch]);
 

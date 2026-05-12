@@ -22,8 +22,35 @@ export function getLastBook(): number | null {
   } catch { return null; }
 }
 
+/** Save to localStorage (instant, used on every scroll) */
 export function saveProgress(bookId: number, progress: ReadingProgress): void {
   try { localStorage.setItem(PROGRESS_KEY(bookId), JSON.stringify(progress)); } catch {}
+}
+
+/** Persist progress to the server (called debounced, ~2s after scroll stops) */
+export async function saveProgressToServer(bookId: number, progress: ReadingProgress): Promise<void> {
+  try {
+    await fetch(`/api/books/${bookId}/progress`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(progress),
+    });
+  } catch {
+    // silently ignore — localStorage is the fallback
+  }
+}
+
+/** Load progress: server is authoritative, localStorage is fallback */
+export async function loadProgressFromServer(bookId: number): Promise<ReadingProgress | null> {
+  try {
+    const res = await fetch(`/api/books/${bookId}/progress`);
+    if (!res.ok) return null;
+    const data = await res.json() as { scrollRatio?: number; lastBatch?: number; ruOffset?: number };
+    if (typeof data.scrollRatio !== "number" || typeof data.lastBatch !== "number") return null;
+    return { scrollRatio: data.scrollRatio, lastBatch: data.lastBatch, ruOffset: data.ruOffset };
+  } catch {
+    return null;
+  }
 }
 
 export function loadProgress(bookId: number): ReadingProgress | null {
