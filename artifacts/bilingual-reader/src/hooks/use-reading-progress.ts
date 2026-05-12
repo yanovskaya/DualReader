@@ -2,10 +2,10 @@ const LAST_BOOK_KEY = "lingua_last_book";
 const PROGRESS_KEY = (bookId: number) => `lingua_progress_${bookId}`;
 
 export interface ReadingProgress {
-  /** 0..1 scroll ratio in the EN panel */
-  scrollRatio: number;
-  /** highest batch number that was loaded */
-  lastBatch: number;
+  /** ID of the first paragraph visible at the top of the EN panel */
+  paragraphId: number;
+  /** Which batch that paragraph belongs to — used as the starting batch on restore */
+  containingBatch: number;
   /** px offset of RU panel from paragraph-synced position (ruOffset ref) */
   ruOffset?: number;
 }
@@ -31,7 +31,7 @@ export function loadProgress(bookId: number): ReadingProgress | null {
     const v = localStorage.getItem(PROGRESS_KEY(bookId));
     if (!v) return null;
     const p = JSON.parse(v) as ReadingProgress;
-    if (typeof p.scrollRatio !== "number" || typeof p.lastBatch !== "number") return null;
+    if (typeof p.paragraphId !== "number" || typeof p.containingBatch !== "number") return null;
     return p;
   } catch { return null; }
 }
