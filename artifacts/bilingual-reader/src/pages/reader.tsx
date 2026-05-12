@@ -19,7 +19,7 @@ import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
 import { SearchPanel } from "@/components/search-panel";
-import { saveLastBook, saveProgress, loadProgress, isV1Progress, isV2Progress } from "@/hooks/use-reading-progress";
+import { saveLastBook, saveProgress, loadProgress } from "@/hooks/use-reading-progress";
 import {
   useReaderSettings,
   THEMES,
@@ -409,23 +409,17 @@ export default function ReaderPage() {
 
   // Load saved reading progress for this book (before first render)
   const savedProgress = bookId ? loadProgress(bookId) : null;
-  const savedV1 = savedProgress && isV1Progress(savedProgress) ? savedProgress : null;
-  const savedV2 = savedProgress && isV2Progress(savedProgress) ? savedProgress : null;
 
-  // Starting batch: v2 uses containingBatch, v1 uses lastBatch
-  const startingBatch = savedV2?.containingBatch ?? savedV1?.lastBatch ?? 1;
-
-  // Incremental batch loading — start from the batch that contains saved position
-  const [currentBatch, setCurrentBatch] = useState(startingBatch);
+  // Incremental batch loading — start from saved batch if available
+  const [currentBatch, setCurrentBatch] = useState(savedProgress?.lastBatch ?? 1);
   const [totalBatches, setTotalBatches] = useState(1);
   const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
   const loadingNextBatch = useRef(false);
   // Track the very first batch we loaded this session — to account for paragraphs
   // from batches 1..(startBatch-1) that are NOT in displayParagraphs but were read before
-  const startBatchRef = useRef(startingBatch);
-  // v1 legacy: scroll ratio to restore (null = not applicable or already done)
-  const pendingRestoreRatio = useRef<number | null>(savedV1?.scrollRatio ?? null);
-  // RU offset to restore after the initial scroll (null = nothing pending)
+  const startBatchRef = useRef(savedProgress?.lastBatch ?? 1);
+  // Scroll ratio to restore after paragraphs load (null = nothing pending)
+  const pendingRestoreRatio = useRef<number | null>(savedProgress?.scrollRatio ?? null);
   const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
@@ -436,10 +430,8 @@ export default function ReaderPage() {
   // Global toggle: show or hide Russian translations
   const [showTranslations, setShowTranslations] = useState(true);
 
-  // Chapter navigation (v2 restore also uses this): id of paragraph to scroll to after load
-  const [pendingScrollId, setPendingScrollId] = useState<number | null>(
-    savedV2?.paragraphId ?? null
-  );
+  // Chapter navigation: id of paragraph we want to scroll to after load
+  const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
   // Two synced scroll panels — EN on top, RU on bottom
   const enRef = useRef<HTMLDivElement>(null);
@@ -612,24 +604,21 @@ export default function ReaderPage() {
     fetch(`/api/books/${bookId}/translate`, { method: "POST" }).catch(() => {});
   }, [statusData?.status, bookId]);
 
-  const didInitialFocusRef = useRef(false);
-
-  // ── v1 (legacy) scroll-ratio restore ──────────────────────────────────────
-  // Retries up to 10×100ms until the EN panel has scrollable height (fixes the
-  // intermittent "reset to beginning" caused by layout not being ready at 120ms).
-  const v1RestoreAttempts = useRef(0);
+  // Restore scroll position once enough paragraphs are loaded, then focus EN panel for keyboard scrolling
   useEffect(() => {
-    if (pendingRestoreRatio.current === null || allParagraphs.length === 0) return;
-
-    const tryRestore = () => {
+    if (allParagraphs.length === 0) return;
+    const timer = setTimeout(() => {
       const en = enRef.current;
       if (!en) return;
-      const scrollable = en.scrollHeight - en.clientHeight;
-      if (scrollable > 0) {
-        en.scrollTop = pendingRestoreRatio.current! * scrollable;
-        if (pendingRestoreRuOffset.current !== null) {
-          ruOffset.current = pendingRestoreRuOffset.current;
-          pendingRestoreRuOffset.current = null;
+      if (pendingRestoreRatio.current !== null) {
+        const scrollable = en.scrollHeight - en.clientHeight;
+        if (scrollable > 0) {
+          en.scrollTop = pendingRestoreRatio.current! * scrollable;
+          // Restore saved ruOffset first, then position RU accordingly.
+          if (pendingRestoreRuOffset.current !== null) {
+            ruOffset.current = pendingRestoreRuOffset.current;
+            pendingRestoreRuOffset.current = null;
+          }
           const ru = ruRef.current;
           if (ru) {
             lastProgRuWrite.current = performance.now();
@@ -637,30 +626,11 @@ export default function ReaderPage() {
           }
         }
         pendingRestoreRatio.current = null;
-        v1RestoreAttempts.current = 0;
-        didInitialFocusRef.current = true;
-        en.focus({ preventScroll: true });
-      } else if (v1RestoreAttempts.current < 10) {
-        v1RestoreAttempts.current++;
-        setTimeout(tryRestore, 100);
-      } else {
-        // Give up — content never got scrollable height
-        pendingRestoreRatio.current = null;
       }
-    };
-
-    const timer = setTimeout(tryRestore, 120);
+      // Auto-focus so keyboard scrolling works immediately
+      en.focus({ preventScroll: true });
+    }, 120);
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allParagraphs]);
-
-  // Focus EN panel for keyboard scrolling (only when no restore is pending)
-  useEffect(() => {
-    if (allParagraphs.length === 0 || didInitialFocusRef.current || savedV1 || savedV2) return;
-    didInitialFocusRef.current = true;
-    const timer = setTimeout(() => enRef.current?.focus({ preventScroll: true }), 120);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allParagraphs]);
 
   // When RU panel becomes visible again, sync its position to current EN position
@@ -684,52 +654,21 @@ export default function ReaderPage() {
     const el = document.getElementById(`para-${pendingScrollId}`);
     const container = enRef.current;
     if (el && container) {
+      // offsetTop relative to scroll container
       const top = el.offsetTop - container.offsetTop;
-      const isInitialRestore = pendingRestoreRuOffset.current !== null || savedV2 !== null;
-      if (isInitialRestore) {
-        // Use instant scroll for initial restore — smooth scroll fires handleEnScroll
-        // events mid-animation which could overwrite saved progress prematurely.
-        container.scrollTop = Math.max(0, top - 12);
-        if (pendingRestoreRuOffset.current !== null) {
-          ruOffset.current = pendingRestoreRuOffset.current;
-          pendingRestoreRuOffset.current = null;
-          const ru = ruRef.current;
-          if (ru) {
-            lastProgRuWrite.current = performance.now();
-            ru.scrollTop = clampRu(ru, paragraphSync(container, ru, paraPositions.current) + ruOffset.current);
-          }
-        }
-        didInitialFocusRef.current = true;
-        container.focus({ preventScroll: true });
-      } else {
-        // Chapter navigation — smooth is fine
-        container.scrollTo({ top: Math.max(0, top - 12), behavior: "smooth" });
-      }
+      container.scrollTo({ top: Math.max(0, top - 12), behavior: "smooth" });
     }
     setPendingScrollId(null);
   }, [allParagraphs, pendingScrollId]);
 
-  // Keep a stable ref to displayParagraphs so saveProgressDebounced doesn't recreate on every batch
-  const displayParagraphsRef = useRef(displayParagraphs);
-  useEffect(() => { displayParagraphsRef.current = displayParagraphs; }, [displayParagraphs]);
-
-  // Debounced save of reading progress — saves by paragraph ID, not scroll ratio
+  // Debounced save of reading progress
   const saveProgressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveProgressDebounced = useCallback(() => {
+  const saveProgressDebounced = useCallback((ratio: number) => {
     if (saveProgressTimer.current) clearTimeout(saveProgressTimer.current);
     saveProgressTimer.current = setTimeout(() => {
-      const en = enRef.current;
-      if (!en) return;
-      // Find the first paragraph whose bottom edge is below the current scroll top
-      const pos = paraPositions.current.find(p => p.enBottom > en.scrollTop);
-      if (!pos) return;
-      const paraIdx = displayParagraphsRef.current.findIndex(p => p.id === pos.id);
-      if (paraIdx < 0) return;
-      const absoluteIdx = (startBatchRef.current - 1) * PAGE_SIZE + paraIdx;
-      const containingBatch = Math.ceil((absoluteIdx + 1) / PAGE_SIZE);
-      saveProgress(bookId, { paragraphId: pos.id, containingBatch, ruOffset: ruOffset.current });
+      saveProgress(bookId, { scrollRatio: ratio, lastBatch: currentBatch, ruOffset: ruOffset.current });
     }, 800);
-  }, [bookId]);
+  }, [bookId, currentBatch]);
 
   // ── Paragraph position cache ────────────────────────────────────────────────
   // After every layout change (new batch loaded, font settings changed), measure
@@ -780,7 +719,7 @@ export default function ReaderPage() {
         setScrollPct(scrollPctRef.current);
       }, 150);
     }
-    saveProgressDebounced();
+    saveProgressDebounced(ratio);
 
     // Sync RU using paragraph-fraction sync: same fractional position within the
     // paragraph visible at the top of EN. Zero DOM queries — uses cached positions.
@@ -809,7 +748,13 @@ export default function ReaderPage() {
     // positions are rebuilt.
     if (paraPositions.current.length > 0) {
       ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
-      saveProgressDebounced();
+      // Only persist if the initial restore is already done — otherwise en.scrollTop
+      // is still 0 and we would overwrite the saved progress with scrollRatio=0.
+      if (pendingRestoreRatio.current === null) {
+        const scrollable = en.scrollHeight - en.clientHeight;
+        const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
+        saveProgressDebounced(ratio);
+      }
     }
   }, [saveProgressDebounced]);
 
