@@ -15,6 +15,14 @@ export interface BookParagraphProps {
   textAlign?: TextAlign;
 }
 
+/** Regex that matches the ". * * * ." separators embedded within long paragraphs. */
+const INLINE_BREAK_RE = /[ \t]*\.[ \t]+\*[ \t]*\*[ \t]*\*[ \t]+\.[ \t]*/g;
+
+/** Split text on embedded scene-break markers; returns array of text parts (length ≥ 1). */
+function splitOnInlineBreaks(text: string): string[] {
+  return text.split(INLINE_BREAK_RE).map(p => p.trim()).filter(p => p.length > 0);
+}
+
 export function BookParagraph({
   paragraph,
   mode,
@@ -48,6 +56,21 @@ export function BookParagraph({
     );
   }
 
+  // ── Scene-break divider helper ─────────────────────────────────────────────
+  const SceneBreakDivider = () => (
+    <div style={{
+      padding: "20px 0",
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+    }}>
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{
+          display: "inline-block", width: 5, height: 5,
+          borderRadius: "50%", background: colors.muted, opacity: 0.45,
+        }} />
+      ))}
+    </div>
+  );
+
   // ── Russian panel ──────────────────────────────────────────────────────────
   if (mode === "ru") {
     const ruContent = paragraph.isTranslated && paragraph.translatedText
@@ -72,19 +95,23 @@ export function BookParagraph({
       );
     }
 
+    const ruParts = ruContent ? splitOnInlineBreaks(ruContent) : null;
     return (
       <div style={{ padding: "4px 12px", borderBottom: `1px solid ${colors.border}` }}>
-        {ruContent ? (
-          <p style={{
-            margin: 0, fontSize, lineHeight, fontFamily,
-            color: colors.muted,
-            fontStyle: "italic",
-            wordBreak: "break-word",
-            overflowWrap: "break-word",
-            textAlign,
-          }}>
-            {ruContent}
-          </p>
+        {ruParts ? (
+          ruParts.flatMap((part, idx) => [
+            idx > 0 ? <SceneBreakDivider key={`br-${idx}`} /> : null,
+            <p key={idx} style={{
+              margin: 0, fontSize, lineHeight, fontFamily,
+              color: colors.muted,
+              fontStyle: "italic",
+              wordBreak: "break-word",
+              overflowWrap: "break-word",
+              textAlign,
+            }}>
+              {part}
+            </p>,
+          ]).filter(Boolean)
         ) : (
           <p style={{ margin: 0, fontSize, color: colors.border, fontStyle: "italic" }}>…</p>
         )}
@@ -93,11 +120,27 @@ export function BookParagraph({
   }
 
   // ── English panel ──────────────────────────────────────────────────────────
-  const rawTokens: string[] = text.match(/[\w''\u2019-]+|[^\w\s]+|\s+/g) ?? [];
-  const tokens = rawTokens.map((token: string) => ({
-    token,
-    isWord: /[\w''\u2019-]+/.test(token) && token.trim().length > 0,
-  }));
+  const enParts = splitOnInlineBreaks(text);
+
+  function renderEnTokens(partText: string, partKey: string) {
+    const rawToks: string[] = partText.match(/[\w''\u2019-]+|[^\w\s]+|\s+/g) ?? [];
+    return rawToks.map((token: string, i) => {
+      const isWord = /[\w''\u2019-]+/.test(token) && token.trim().length > 0;
+      if (!isWord) return <span key={`${partKey}-${i}`}>{token}</span>;
+      const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
+      return (
+        <span
+          key={`${partKey}-${i}`}
+          onClick={e => { e.stopPropagation(); onWordClick?.(clean, paragraph); }}
+          style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+        >
+          {token}
+        </span>
+      );
+    });
+  }
 
   if (isHeading) {
     return (
@@ -111,21 +154,7 @@ export function BookParagraph({
           color: colors.heading,
           wordBreak: "break-word",
         }}>
-          {tokens.map(({ token, isWord }, i) => {
-            if (!isWord) return <span key={i}>{token}</span>;
-            const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
-            return (
-              <span
-                key={i}
-                onClick={e => { e.stopPropagation(); onWordClick?.(clean, paragraph); }}
-                style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-              >
-                {token}
-              </span>
-            );
-          })}
+          {renderEnTokens(text, "h")}
         </h2>
       </div>
     );
@@ -133,30 +162,19 @@ export function BookParagraph({
 
   return (
     <div style={{ padding: "10px 16px", borderBottom: `1px solid ${colors.border}` }}>
-      <p style={{
-        margin: 0, fontSize, lineHeight, fontFamily,
-        color: colors.text,
-        wordBreak: "break-word",
-        overflowWrap: "break-word",
-        textAlign,
-        touchAction: "manipulation",
-      }}>
-        {tokens.map(({ token, isWord }, i) => {
-          if (!isWord) return <span key={i}>{token}</span>;
-          const clean = token.replace(/^[^\w\u2019]+|[^\w\u2019]+$/g, "");
-          return (
-            <span
-              key={i}
-              onClick={e => { e.stopPropagation(); onWordClick?.(clean, paragraph); }}
-              style={{ cursor: "pointer", borderRadius: 2, touchAction: "manipulation" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.hover; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
-              {token}
-            </span>
-          );
-        })}
-      </p>
+      {enParts.flatMap((part, idx) => [
+        idx > 0 ? <SceneBreakDivider key={`br-${idx}`} /> : null,
+        <p key={idx} style={{
+          margin: 0, fontSize, lineHeight, fontFamily,
+          color: colors.text,
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
+          textAlign,
+          touchAction: "manipulation",
+        }}>
+          {renderEnTokens(part, String(idx))}
+        </p>,
+      ]).filter(Boolean)}
     </div>
   );
 }

@@ -53,8 +53,13 @@ public class DictionaryService {
 
         if (!cached.isEmpty()) {
             Map<String, Object> entry = cached.get(0);
+            List<?> translations = (List<?>) entry.get("translations");
             List<?> synonyms = (List<?>) entry.get("synonyms");
-            if (synonyms != null && !synonyms.isEmpty()) {
+            // Skip cached fallback results ("перевод недоступен") — always re-fetch
+            boolean isCachedFallback = translations != null && translations.size() == 1
+                    && "перевод недоступен".equals(translations.get(0).toString());
+            boolean hasSynonyms = synonyms != null && synonyms.stream().anyMatch(s -> !s.toString().isBlank());
+            if (!isCachedFallback && hasSynonyms) {
                 // Update timestamp
                 jdbc.update("UPDATE dictionary_lookups SET looked_up_at = NOW() WHERE word = ? AND looked_up_at = (SELECT MAX(looked_up_at) FROM dictionary_lookups WHERE word = ?)",
                         normalizedWord, normalizedWord);
