@@ -27,8 +27,11 @@ function highlight(text: string, query: string): (string | JSX.Element)[] {
   const escapedQ = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(`(${escapedQ})`, "gi");
   const parts = text.split(re);
+  // When splitting with a capturing group, odd-indexed parts are the matches.
+  // Do NOT use re.test() here — with the g flag, lastIndex advances between
+  // calls and every second match incorrectly returns false.
   return parts.map((p, i) =>
-    re.test(p)
+    i % 2 === 1
       ? <mark key={i} style={{ background: "#fde68a", color: "#92400e", borderRadius: 2, padding: "0 1px" }}>{p}</mark>
       : p
   );
