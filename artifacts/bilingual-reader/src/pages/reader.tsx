@@ -993,12 +993,12 @@ export default function ReaderPage() {
                   <span style={{ color: colors.accent, fontWeight: 600 }}>
                     {Math.round(chapterReadPct * 100)}%
                   </span>
-                  {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+                  {chapterRemainingParas > 0 && ` · ${timeLeft(chapterRemainingParas)} осталось`}
                 </>
               ) : (
                 <>
                   {Math.round(globalReadPct * 100)}%
-                  {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+                  {chapterRemainingParas > 0 && ` · ${timeLeft(chapterRemainingParas)} осталось`}
                 </>
               )}
               {translatedPct !== null && translatedPct < 100 && (
