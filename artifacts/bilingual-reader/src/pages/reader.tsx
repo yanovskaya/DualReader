@@ -410,18 +410,25 @@ export default function ReaderPage() {
   // Load saved reading progress for this book — localStorage is instant (no flicker)
   const savedProgress = bookId ? loadProgress(bookId) : null;
 
+  // Compute the batch that contains the saved paragraph (position / PAGE_SIZE + 1)
+  const initBatch = savedProgress?.paragraphPosition != null
+    ? Math.ceil((savedProgress.paragraphPosition + 1) / PAGE_SIZE)
+    : 1;
+
   // Incremental batch loading — start from saved batch if available
-  const [currentBatch, setCurrentBatch] = useState(savedProgress?.lastBatch ?? 1);
-  const currentBatchRef = useRef(savedProgress?.lastBatch ?? 1);
+  const [currentBatch, setCurrentBatch] = useState(initBatch);
+  const currentBatchRef = useRef(initBatch);
   const [totalBatches, setTotalBatches] = useState(1);
   const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
   const loadingNextBatch = useRef(false);
-  // Track the very first batch we loaded this session — to account for paragraphs
-  // from batches 1..(startBatch-1) that are NOT in displayParagraphs but were read before
-  const startBatchRef = useRef(savedProgress?.lastBatch ?? 1);
-  // Scroll ratio to restore after paragraphs load (null = nothing pending)
-  const pendingRestoreRatio = useRef<number | null>(savedProgress?.scrollRatio ?? null);
+  // Track the very first batch we loaded this session (for progress % calculation)
+  const startBatchRef = useRef(initBatch);
+
+  // Paragraph-ID based restore: null = nothing pending, number = scroll to this paragraph
+  const pendingRestoreParagraphId = useRef<number | null>(savedProgress?.paragraphId ?? null);
   const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
+  // Tracks the first visible paragraph — used for saving position reliably
+  const firstVisibleParaRef = useRef<{ id: number; position: number } | null>(null);
 
   // Keep currentBatchRef in sync so async callbacks always see the latest value
   useEffect(() => { currentBatchRef.current = currentBatch; }, [currentBatch]);
@@ -430,37 +437,23 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!bookId) return;
     loadProgressFromServer(bookId).then(sp => {
-      if (!sp || sp.scrollRatio === 0) return;
-      // Prefer server if it is at least as far as localStorage
-      const localBatch = savedProgress?.lastBatch ?? 1;
-      if (sp.lastBatch < localBatch) return;
+      if (!sp) return;
+      // Use server data if it is at a later or equal position than what localStorage had
+      const localPos = savedProgress?.paragraphPosition ?? -1;
+      if (sp.paragraphPosition < localPos) return;
 
       // Sync localStorage with server value
       saveProgress(bookId, sp);
-      pendingRestoreRatio.current = sp.scrollRatio;
+      pendingRestoreParagraphId.current = sp.paragraphId;
       pendingRestoreRuOffset.current = sp.ruOffset ?? null;
 
-      if (sp.lastBatch > currentBatchRef.current) {
-        // Loading a new batch changes allParagraphs → restore effect will fire
-        setCurrentBatch(sp.lastBatch);
-        startBatchRef.current = sp.lastBatch;
-      } else {
-        // Same batch already loaded — restore effect already fired, scroll directly now
-        setTimeout(() => {
-          const en = enRef.current;
-          if (!en) return;
-          const scrollable = en.scrollHeight - en.clientHeight;
-          if (scrollable <= 0) return;
-          en.scrollTop = sp.scrollRatio * scrollable;
-          if (sp.ruOffset != null) ruOffset.current = sp.ruOffset;
-          const ru = ruRef.current;
-          if (ru) {
-            lastProgRuWrite.current = performance.now();
-            ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
-          }
-          pendingRestoreRatio.current = null;
-        }, 200);
+      const neededBatch = Math.ceil((sp.paragraphPosition + 1) / PAGE_SIZE);
+      if (neededBatch > currentBatchRef.current) {
+        setCurrentBatch(neededBatch);
+        startBatchRef.current = neededBatch;
       }
+      // If paragraph is already in the same batch: the restore effect below retries
+      // on every allParagraphs change and will scroll once the element is in the DOM.
     });
   // intentionally run only once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -648,33 +641,36 @@ export default function ReaderPage() {
     fetch(`/api/books/${bookId}/translate`, { method: "POST" }).catch(() => {});
   }, [statusData?.status, bookId]);
 
-  // Restore scroll position once enough paragraphs are loaded, then focus EN panel for keyboard scrolling
+  // Restore scroll position by paragraph ID — fires whenever allParagraphs changes.
+  // Retries until the target paragraph is in the DOM (handles multi-batch loads).
   useEffect(() => {
     if (allParagraphs.length === 0) return;
-    const timer = setTimeout(() => {
-      const en = enRef.current;
-      if (!en) return;
-      if (pendingRestoreRatio.current !== null) {
-        const scrollable = en.scrollHeight - en.clientHeight;
-        if (scrollable > 0) {
-          en.scrollTop = pendingRestoreRatio.current! * scrollable;
-          // Restore saved ruOffset first, then position RU accordingly.
-          if (pendingRestoreRuOffset.current !== null) {
-            ruOffset.current = pendingRestoreRuOffset.current;
-            pendingRestoreRuOffset.current = null;
-          }
-          const ru = ruRef.current;
-          if (ru) {
-            lastProgRuWrite.current = performance.now();
-            ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
-          }
-        }
-        pendingRestoreRatio.current = null;
+    if (pendingRestoreParagraphId.current === null) {
+      enRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    const paragraphId = pendingRestoreParagraphId.current;
+    // Defer to rAF so layout (and paraPositions rebuild) is complete
+    const raf = requestAnimationFrame(() => {
+      const el = document.getElementById(`para-${paragraphId}`);
+      const container = enRef.current;
+      if (!el || !container) return; // paragraph not in DOM yet — will retry on next batch
+      const top = el.offsetTop - container.offsetTop;
+      container.scrollTop = Math.max(0, top - 12);
+      // Restore RU offset and sync RU panel
+      if (pendingRestoreRuOffset.current !== null) {
+        ruOffset.current = pendingRestoreRuOffset.current;
+        pendingRestoreRuOffset.current = null;
       }
-      // Auto-focus so keyboard scrolling works immediately
-      en.focus({ preventScroll: true });
-    }, 120);
-    return () => clearTimeout(timer);
+      const ru = ruRef.current;
+      if (ru) {
+        lastProgRuWrite.current = performance.now();
+        ru.scrollTop = clampRu(ru, paragraphSync(container, ru, paraPositions.current) + ruOffset.current);
+      }
+      pendingRestoreParagraphId.current = null;
+      container.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [allParagraphs]);
 
   // When RU panel becomes visible again, sync its position to current EN position
@@ -705,35 +701,39 @@ export default function ReaderPage() {
     setPendingScrollId(null);
   }, [allParagraphs, pendingScrollId]);
 
-  // Always-fresh snapshot of scroll ratio — updated synchronously on every scroll
-  const lastScrollRatio = useRef<number>(savedProgress?.scrollRatio ?? 0);
   // Separate timers: localStorage is fast (300ms), server is slower (2000ms)
   const localSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Ref so flush() always sees latest currentBatch without stale closure
-  const currentBatchForSave = useRef(currentBatch);
-  useEffect(() => { currentBatchForSave.current = currentBatch; }, [currentBatch]);
 
-  // Flush saves both immediately — called on visibility hide and beforeunload
+  // Flush saves both immediately — called on visibility hide and beforeunload.
+  // Does NOT save if the user hasn't scrolled yet (firstVisibleParaRef is null),
+  // preventing overwrite of a previously-saved position with a zero/empty value.
   const flushProgress = useCallback(() => {
+    const para = firstVisibleParaRef.current;
+    if (!para) return; // user hasn't scrolled — preserve server's saved position
     if (localSaveTimer.current) { clearTimeout(localSaveTimer.current); localSaveTimer.current = null; }
     if (serverSaveTimer.current) { clearTimeout(serverSaveTimer.current); serverSaveTimer.current = null; }
-    const progress = { scrollRatio: lastScrollRatio.current, lastBatch: currentBatchForSave.current, ruOffset: ruOffset.current };
+    const progress = { paragraphId: para.id, paragraphPosition: para.position, ruOffset: ruOffset.current };
     saveProgress(bookId, progress);
     saveProgressToServer(bookId, progress);
   }, [bookId]);
 
-  const saveProgressDebounced = useCallback((ratio: number) => {
-    lastScrollRatio.current = ratio;
+  const saveProgressDebounced = useCallback(() => {
+    const para = firstVisibleParaRef.current;
+    if (!para) return; // no visible paragraph tracked yet
     // localStorage: 300ms debounce (survives normal navigation)
     if (localSaveTimer.current) clearTimeout(localSaveTimer.current);
     localSaveTimer.current = setTimeout(() => {
-      saveProgress(bookId, { scrollRatio: ratio, lastBatch: currentBatchForSave.current, ruOffset: ruOffset.current });
+      const p = firstVisibleParaRef.current;
+      if (!p) return;
+      saveProgress(bookId, { paragraphId: p.id, paragraphPosition: p.position, ruOffset: ruOffset.current });
     }, 300);
     // server: 2000ms debounce (reduce API calls)
     if (serverSaveTimer.current) clearTimeout(serverSaveTimer.current);
     serverSaveTimer.current = setTimeout(() => {
-      saveProgressToServer(bookId, { scrollRatio: ratio, lastBatch: currentBatchForSave.current, ruOffset: ruOffset.current });
+      const p = firstVisibleParaRef.current;
+      if (!p) return;
+      saveProgressToServer(bookId, { paragraphId: p.id, paragraphPosition: p.position, ruOffset: ruOffset.current });
     }, 2000);
   }, [bookId]);
 
@@ -799,7 +799,15 @@ export default function ReaderPage() {
         setScrollPct(scrollPctRef.current);
       }, 150);
     }
-    saveProgressDebounced(ratio);
+    // Track the first visible paragraph for reliable progress saving
+    const visiblePos = paraPositions.current.find(p => p.enBottom > en.scrollTop + 10);
+    if (visiblePos) {
+      const para = displayParagraphs.find(p => p.id === visiblePos.id);
+      if (para != null && para.position != null) {
+        firstVisibleParaRef.current = { id: para.id as number, position: para.position };
+      }
+    }
+    saveProgressDebounced();
 
     // Sync RU using paragraph-fraction sync: same fractional position within the
     // paragraph visible at the top of EN. Zero DOM queries — uses cached positions.
@@ -828,12 +836,10 @@ export default function ReaderPage() {
     // positions are rebuilt.
     if (paraPositions.current.length > 0) {
       ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
-      // Only persist if the initial restore is already done — otherwise en.scrollTop
-      // is still 0 and we would overwrite the saved progress with scrollRatio=0.
-      if (pendingRestoreRatio.current === null) {
-        const scrollable = en.scrollHeight - en.clientHeight;
-        const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
-        saveProgressDebounced(ratio);
+      // Only persist if the user has already scrolled (firstVisibleParaRef set),
+      // to avoid overwriting a saved position before restore is complete.
+      if (firstVisibleParaRef.current !== null) {
+        saveProgressDebounced();
       }
     }
   }, [saveProgressDebounced]);

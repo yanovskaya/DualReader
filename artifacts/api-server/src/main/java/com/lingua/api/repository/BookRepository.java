@@ -21,9 +21,8 @@ public interface BookRepository extends JpaRepository<Book, Integer> {
     Long countWordsByBookId(Integer bookId);
 
     @Modifying
-    @Query(value = "UPDATE books SET scroll_ratio = :scrollRatio, last_batch = :lastBatch, ru_offset = :ruOffset WHERE id = :id", nativeQuery = true)
+    @Query(value = "UPDATE books SET paragraph_id = :paragraphId, ru_offset = :ruOffset WHERE id = :id", nativeQuery = true)
     void updateProgress(@Param("id") Integer id,
-                        @Param("scrollRatio") Double scrollRatio,
-                        @Param("lastBatch") Integer lastBatch,
+                        @Param("paragraphId") Integer paragraphId,
                         @Param("ruOffset") Double ruOffset);
 }

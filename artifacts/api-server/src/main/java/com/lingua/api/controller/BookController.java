@@ -150,8 +150,14 @@ public class BookController {
     public ResponseEntity<?> getProgress(@PathVariable Integer id) {
         return bookService.getBook(id).map(book -> {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("scrollRatio", book.getScrollRatio() != null ? book.getScrollRatio() : 0.0);
-            result.put("lastBatch", book.getLastBatch() != null ? book.getLastBatch() : 1);
+            Integer paraId = book.getParagraphId();
+            Integer paraPosition = null;
+            if (paraId != null) {
+                paraPosition = paragraphRepo.findById(paraId)
+                        .map(p -> p.getPosition()).orElse(null);
+            }
+            result.put("paragraphId", paraId);
+            result.put("paragraphPosition", paraPosition);
             result.put("ruOffset", book.getRuOffset() != null ? book.getRuOffset() : 0.0);
             return ResponseEntity.ok(result);
         }).orElse(ResponseEntity.notFound().build());
@@ -163,10 +169,9 @@ public class BookController {
             @PathVariable Integer id,
             @RequestBody Map<String, Object> body) {
         if (bookService.getBook(id).isEmpty()) return ResponseEntity.notFound().build();
-        double scrollRatio = body.get("scrollRatio") instanceof Number n ? n.doubleValue() : 0.0;
-        int lastBatch = body.get("lastBatch") instanceof Number n ? n.intValue() : 1;
+        Integer paragraphId = body.get("paragraphId") instanceof Number n ? n.intValue() : null;
         double ruOffset = body.get("ruOffset") instanceof Number n ? n.doubleValue() : 0.0;
-        bookService.updateProgress(id, scrollRatio, lastBatch, ruOffset);
+        bookService.updateProgress(id, paragraphId, ruOffset);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
