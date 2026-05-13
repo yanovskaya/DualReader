@@ -989,11 +989,17 @@ export default function ReaderPage() {
             </div>
             <div style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
               {currentChapter ? (
-                <span style={{ color: colors.accent, fontWeight: 600 }}>
-                  {Math.round(chapterReadPct * 100)}%
-                </span>
+                <>
+                  <span style={{ color: colors.accent, fontWeight: 600 }}>
+                    {Math.round(chapterReadPct * 100)}%
+                  </span>
+                  {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+                </>
               ) : (
-                `${Math.round(globalReadPct * 100)}%`
+                <>
+                  {Math.round(globalReadPct * 100)}%
+                  {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+                </>
               )}
               {translatedPct !== null && translatedPct < 100 && (
                 <span style={{ marginLeft: 6, color: colors.accent }}>⟳ {translatedPct}% пер.</span>
