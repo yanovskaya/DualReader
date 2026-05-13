@@ -672,6 +672,16 @@ export default function ReaderPage() {
         lastProgRuWrite.current = performance.now();
         ru.scrollTop = clampRu(ru, paragraphSync(container, ru, paraPositions.current) + ruOffset.current);
       }
+      // Seed firstVisibleParaRef so flushProgress works even if user never manually scrolls.
+      // Without this, a user who opens → reads without scrolling → closes loses their place.
+      const restoredPara = allParagraphs.find(p => p.id === paragraphId);
+      if (restoredPara != null && restoredPara.position != null) {
+        firstVisibleParaRef.current = {
+          id: restoredPara.id as number,
+          position: restoredPara.position,
+          paragraphOffset: pendingRestoreParagraphOffset.current,
+        };
+      }
       setPendingRestoreParagraphId(null);
       container.focus({ preventScroll: true });
     });
