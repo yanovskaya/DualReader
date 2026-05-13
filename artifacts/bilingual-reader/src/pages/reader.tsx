@@ -659,7 +659,7 @@ export default function ReaderPage() {
       const el = document.getElementById(`para-${paragraphId}`);
       const container = enRef.current;
       if (!el || !container) return; // paragraph not in DOM yet — will retry on next batch
-      const top = el.offsetTop - container.offsetTop;
+      const top = offsetInContainer(el, container);
       const withinPara = pendingRestoreParagraphOffset.current * el.offsetHeight;
       container.scrollTop = Math.max(0, top + withinPara - 12);
       // Restore RU offset and sync RU panel
@@ -819,6 +819,22 @@ export default function ReaderPage() {
         const scrolledInto = en.scrollTop - visiblePos.enTop;
         const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
         firstVisibleParaRef.current = { id: para.id as number, position: para.position, paragraphOffset };
+      }
+    } else {
+      // Fallback: paraPositions not built yet — scan DOM directly so we never lose position.
+      // This happens during the one-frame delay after batch load; throttled by the outer scroll handler.
+      for (const p of displayParagraphs) {
+        if (p.position == null) continue;
+        const el = document.getElementById(`para-${p.id}`);
+        if (!el) continue;
+        const top = offsetInContainer(el, en);
+        if (top + el.offsetHeight > en.scrollTop + 10) {
+          const paraHeight = el.offsetHeight;
+          const scrolledInto = en.scrollTop - top;
+          const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
+          firstVisibleParaRef.current = { id: p.id as number, position: p.position, paragraphOffset };
+          break;
+        }
       }
     }
     saveProgressDebounced();
