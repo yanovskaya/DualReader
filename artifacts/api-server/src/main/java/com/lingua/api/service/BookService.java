@@ -86,8 +86,8 @@ public class BookService {
     }
 
     @Transactional
-    public void updateProgress(Integer bookId, Integer paragraphId, Double ruOffset) {
-        bookRepo.updateProgress(bookId, paragraphId, ruOffset);
+    public void updateProgress(Integer bookId, Integer paragraphId, Double paragraphOffset, Double ruOffset) {
+        bookRepo.updateProgress(bookId, paragraphId, paragraphOffset, ruOffset);
     }
 
     @Transactional

@@ -42,6 +42,10 @@ public class Book {
     @Column(name = "paragraph_id")
     private Integer paragraphId;
 
+    /** Fractional offset within the first visible paragraph (0.0–1.0). Stored in scroll_ratio column. */
+    @Column(name = "scroll_ratio")
+    private Double paragraphOffset;
+
     @Column(name = "ru_offset")
     private Double ruOffset;
 }

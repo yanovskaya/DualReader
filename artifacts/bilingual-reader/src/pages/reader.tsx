@@ -427,8 +427,9 @@ export default function ReaderPage() {
   // Paragraph-ID based restore: null = nothing pending, number = scroll to this paragraph
   const pendingRestoreParagraphId = useRef<number | null>(savedProgress?.paragraphId ?? null);
   const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
+  const pendingRestoreParagraphOffset = useRef<number>(savedProgress?.paragraphOffset ?? 0);
   // Tracks the first visible paragraph — used for saving position reliably
-  const firstVisibleParaRef = useRef<{ id: number; position: number } | null>(null);
+  const firstVisibleParaRef = useRef<{ id: number; position: number; paragraphOffset: number } | null>(null);
 
   // Keep currentBatchRef in sync so async callbacks always see the latest value
   useEffect(() => { currentBatchRef.current = currentBatch; }, [currentBatch]);
@@ -445,6 +446,7 @@ export default function ReaderPage() {
       // Sync localStorage with server value
       saveProgress(bookId, sp);
       pendingRestoreParagraphId.current = sp.paragraphId;
+      pendingRestoreParagraphOffset.current = sp.paragraphOffset ?? 0;
       pendingRestoreRuOffset.current = sp.ruOffset ?? null;
 
       const neededBatch = Math.ceil((sp.paragraphPosition + 1) / PAGE_SIZE);
@@ -656,7 +658,8 @@ export default function ReaderPage() {
       const container = enRef.current;
       if (!el || !container) return; // paragraph not in DOM yet — will retry on next batch
       const top = el.offsetTop - container.offsetTop;
-      container.scrollTop = Math.max(0, top - 12);
+      const withinPara = pendingRestoreParagraphOffset.current * el.offsetHeight;
+      container.scrollTop = Math.max(0, top + withinPara - 12);
       // Restore RU offset and sync RU panel
       if (pendingRestoreRuOffset.current !== null) {
         ruOffset.current = pendingRestoreRuOffset.current;
@@ -713,7 +716,7 @@ export default function ReaderPage() {
     if (!para) return; // user hasn't scrolled — preserve server's saved position
     if (localSaveTimer.current) { clearTimeout(localSaveTimer.current); localSaveTimer.current = null; }
     if (serverSaveTimer.current) { clearTimeout(serverSaveTimer.current); serverSaveTimer.current = null; }
-    const progress = { paragraphId: para.id, paragraphPosition: para.position, ruOffset: ruOffset.current };
+    const progress = { paragraphId: para.id, paragraphPosition: para.position, paragraphOffset: para.paragraphOffset, ruOffset: ruOffset.current };
     saveProgress(bookId, progress);
     saveProgressToServer(bookId, progress);
   }, [bookId]);
@@ -726,14 +729,14 @@ export default function ReaderPage() {
     localSaveTimer.current = setTimeout(() => {
       const p = firstVisibleParaRef.current;
       if (!p) return;
-      saveProgress(bookId, { paragraphId: p.id, paragraphPosition: p.position, ruOffset: ruOffset.current });
+      saveProgress(bookId, { paragraphId: p.id, paragraphPosition: p.position, paragraphOffset: p.paragraphOffset, ruOffset: ruOffset.current });
     }, 300);
     // server: 2000ms debounce (reduce API calls)
     if (serverSaveTimer.current) clearTimeout(serverSaveTimer.current);
     serverSaveTimer.current = setTimeout(() => {
       const p = firstVisibleParaRef.current;
       if (!p) return;
-      saveProgressToServer(bookId, { paragraphId: p.id, paragraphPosition: p.position, ruOffset: ruOffset.current });
+      saveProgressToServer(bookId, { paragraphId: p.id, paragraphPosition: p.position, paragraphOffset: p.paragraphOffset, ruOffset: ruOffset.current });
     }, 2000);
   }, [bookId]);
 
@@ -799,12 +802,15 @@ export default function ReaderPage() {
         setScrollPct(scrollPctRef.current);
       }, 150);
     }
-    // Track the first visible paragraph for reliable progress saving
+    // Track the first visible paragraph + how far into it we've scrolled
     const visiblePos = paraPositions.current.find(p => p.enBottom > en.scrollTop + 10);
     if (visiblePos) {
       const para = displayParagraphs.find(p => p.id === visiblePos.id);
       if (para != null && para.position != null) {
-        firstVisibleParaRef.current = { id: para.id as number, position: para.position };
+        const paraHeight = visiblePos.enBottom - visiblePos.enTop;
+        const scrolledInto = en.scrollTop - visiblePos.enTop;
+        const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
+        firstVisibleParaRef.current = { id: para.id as number, position: para.position, paragraphOffset };
       }
     }
     saveProgressDebounced();

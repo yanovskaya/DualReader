@@ -6,6 +6,8 @@ export interface ReadingProgress {
   paragraphId: number;
   /** position index of that paragraph in the book (used to compute which batch to load) */
   paragraphPosition: number;
+  /** fractional scroll offset within the paragraph (0.0–1.0), handles single-paragraph books */
+  paragraphOffset?: number;
   /** px offset of RU panel from paragraph-synced position */
   ruOffset?: number;
 }
@@ -45,9 +47,19 @@ export async function loadProgressFromServer(bookId: number): Promise<ReadingPro
   try {
     const res = await fetch(`/api/books/${bookId}/progress`);
     if (!res.ok) return null;
-    const data = await res.json() as { paragraphId?: number; paragraphPosition?: number; ruOffset?: number };
+    const data = await res.json() as {
+      paragraphId?: number;
+      paragraphPosition?: number;
+      paragraphOffset?: number;
+      ruOffset?: number;
+    };
     if (data.paragraphId == null || data.paragraphPosition == null) return null;
-    return { paragraphId: data.paragraphId, paragraphPosition: data.paragraphPosition, ruOffset: data.ruOffset };
+    return {
+      paragraphId: data.paragraphId,
+      paragraphPosition: data.paragraphPosition,
+      paragraphOffset: data.paragraphOffset,
+      ruOffset: data.ruOffset,
+    };
   } catch {
     return null;
   }

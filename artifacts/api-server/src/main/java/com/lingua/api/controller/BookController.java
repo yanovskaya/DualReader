@@ -158,6 +158,7 @@ public class BookController {
             }
             result.put("paragraphId", paraId);
             result.put("paragraphPosition", paraPosition);
+            result.put("paragraphOffset", book.getParagraphOffset() != null ? book.getParagraphOffset() : 0.0);
             result.put("ruOffset", book.getRuOffset() != null ? book.getRuOffset() : 0.0);
             return ResponseEntity.ok(result);
         }).orElse(ResponseEntity.notFound().build());
@@ -170,8 +171,9 @@ public class BookController {
             @RequestBody Map<String, Object> body) {
         if (bookService.getBook(id).isEmpty()) return ResponseEntity.notFound().build();
         Integer paragraphId = body.get("paragraphId") instanceof Number n ? n.intValue() : null;
+        double paragraphOffset = body.get("paragraphOffset") instanceof Number n ? n.doubleValue() : 0.0;
         double ruOffset = body.get("ruOffset") instanceof Number n ? n.doubleValue() : 0.0;
-        bookService.updateProgress(id, paragraphId, ruOffset);
+        bookService.updateProgress(id, paragraphId, paragraphOffset, ruOffset);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
