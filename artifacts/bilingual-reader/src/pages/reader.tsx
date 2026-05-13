@@ -412,6 +412,7 @@ export default function ReaderPage() {
 
   // Incremental batch loading — start from saved batch if available
   const [currentBatch, setCurrentBatch] = useState(savedProgress?.lastBatch ?? 1);
+  const currentBatchRef = useRef(savedProgress?.lastBatch ?? 1);
   const [totalBatches, setTotalBatches] = useState(1);
   const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
   const loadingNextBatch = useRef(false);
@@ -422,6 +423,9 @@ export default function ReaderPage() {
   const pendingRestoreRatio = useRef<number | null>(savedProgress?.scrollRatio ?? null);
   const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
 
+  // Keep currentBatchRef in sync so async callbacks always see the latest value
+  useEffect(() => { currentBatchRef.current = currentBatch; }, [currentBatch]);
+
   // On mount, fetch authoritative progress from server (survives browser cache clears)
   useEffect(() => {
     if (!bookId) return;
@@ -429,15 +433,33 @@ export default function ReaderPage() {
       if (!sp || sp.scrollRatio === 0) return;
       // Prefer server if it is at least as far as localStorage
       const localBatch = savedProgress?.lastBatch ?? 1;
-      if (sp.lastBatch >= localBatch) {
-        pendingRestoreRatio.current = sp.scrollRatio;
-        pendingRestoreRuOffset.current = sp.ruOffset ?? null;
-        if (sp.lastBatch > currentBatch) {
-          setCurrentBatch(sp.lastBatch);
-          startBatchRef.current = sp.lastBatch;
-        }
-        // Sync localStorage with server value
-        saveProgress(bookId, sp);
+      if (sp.lastBatch < localBatch) return;
+
+      // Sync localStorage with server value
+      saveProgress(bookId, sp);
+      pendingRestoreRatio.current = sp.scrollRatio;
+      pendingRestoreRuOffset.current = sp.ruOffset ?? null;
+
+      if (sp.lastBatch > currentBatchRef.current) {
+        // Loading a new batch changes allParagraphs → restore effect will fire
+        setCurrentBatch(sp.lastBatch);
+        startBatchRef.current = sp.lastBatch;
+      } else {
+        // Same batch already loaded — restore effect already fired, scroll directly now
+        setTimeout(() => {
+          const en = enRef.current;
+          if (!en) return;
+          const scrollable = en.scrollHeight - en.clientHeight;
+          if (scrollable <= 0) return;
+          en.scrollTop = sp.scrollRatio * scrollable;
+          if (sp.ruOffset != null) ruOffset.current = sp.ruOffset;
+          const ru = ruRef.current;
+          if (ru) {
+            lastProgRuWrite.current = performance.now();
+            ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
+          }
+          pendingRestoreRatio.current = null;
+        }, 200);
       }
     });
   // intentionally run only once on mount
