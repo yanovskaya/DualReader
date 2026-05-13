@@ -12,13 +12,14 @@ interface SearchPanelProps {
   onClose: () => void;
 }
 
-/** Extract a window of text around the first occurrence of query (≈120 chars each side). */
-function extractSnippet(text: string, query: string, radius = 120): string {
-  if (!query.trim()) return text.slice(0, radius * 2);
+/** Extract a window of text around the first occurrence of query (≈50 chars before, 160 after).
+ *  Small left-radius ensures the highlighted word is always visible within 2 lines on mobile. */
+function extractSnippet(text: string, query: string, leftRadius = 50, rightRadius = 160): string {
+  if (!query.trim()) return text.slice(0, leftRadius + rightRadius);
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx === -1) return text.slice(0, radius * 2);
-  const start = Math.max(0, idx - radius);
-  const end = Math.min(text.length, idx + query.length + radius);
+  if (idx === -1) return text.slice(0, leftRadius + rightRadius);
+  const start = Math.max(0, idx - leftRadius);
+  const end = Math.min(text.length, idx + query.length + rightRadius);
   return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
 }
 
@@ -186,17 +187,17 @@ export function SearchPanel({ bookId, colors, fontSize, onNavigate, onClose }: S
                 )}
               </div>
 
-              {/* EN text */}
+              {/* EN text — always shown with highlight */}
               <p style={{
                 margin: 0, fontSize: fontSize - 1, color: colors.text,
                 lineHeight: 1.4, wordBreak: "break-word",
-                display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+                display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden",
               }}>
                 <Snippet text={r.originalText} query={debouncedQ} />
               </p>
 
-              {/* RU text (if available and different) */}
-              {r.translatedText && (
+              {/* RU text — only show when the query actually appears in the translation */}
+              {r.translatedText && r.translatedText.toLowerCase().includes(debouncedQ.toLowerCase()) && (
                 <p style={{
                   margin: "4px 0 0", fontSize: fontSize - 2, color: colors.muted,
                   lineHeight: 1.35, fontStyle: "italic", wordBreak: "break-word",
