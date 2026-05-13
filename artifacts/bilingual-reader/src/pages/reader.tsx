@@ -705,16 +705,50 @@ export default function ReaderPage() {
     setPendingScrollId(null);
   }, [allParagraphs, pendingScrollId]);
 
-  // Debounced save of reading progress
-  const saveProgressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always-fresh snapshot of scroll ratio — updated synchronously on every scroll
+  const lastScrollRatio = useRef<number>(savedProgress?.scrollRatio ?? 0);
+  // Separate timers: localStorage is fast (300ms), server is slower (2000ms)
+  const localSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref so flush() always sees latest currentBatch without stale closure
+  const currentBatchForSave = useRef(currentBatch);
+  useEffect(() => { currentBatchForSave.current = currentBatch; }, [currentBatch]);
+
+  // Flush saves both immediately — called on visibility hide and beforeunload
+  const flushProgress = useCallback(() => {
+    if (localSaveTimer.current) { clearTimeout(localSaveTimer.current); localSaveTimer.current = null; }
+    if (serverSaveTimer.current) { clearTimeout(serverSaveTimer.current); serverSaveTimer.current = null; }
+    const progress = { scrollRatio: lastScrollRatio.current, lastBatch: currentBatchForSave.current, ruOffset: ruOffset.current };
+    saveProgress(bookId, progress);
+    saveProgressToServer(bookId, progress);
+  }, [bookId]);
+
   const saveProgressDebounced = useCallback((ratio: number) => {
-    if (saveProgressTimer.current) clearTimeout(saveProgressTimer.current);
-    saveProgressTimer.current = setTimeout(() => {
-      const progress = { scrollRatio: ratio, lastBatch: currentBatch, ruOffset: ruOffset.current };
-      saveProgress(bookId, progress);
-      saveProgressToServer(bookId, progress);
-    }, 800);
-  }, [bookId, currentBatch]);
+    lastScrollRatio.current = ratio;
+    // localStorage: 300ms debounce (survives normal navigation)
+    if (localSaveTimer.current) clearTimeout(localSaveTimer.current);
+    localSaveTimer.current = setTimeout(() => {
+      saveProgress(bookId, { scrollRatio: ratio, lastBatch: currentBatchForSave.current, ruOffset: ruOffset.current });
+    }, 300);
+    // server: 2000ms debounce (reduce API calls)
+    if (serverSaveTimer.current) clearTimeout(serverSaveTimer.current);
+    serverSaveTimer.current = setTimeout(() => {
+      saveProgressToServer(bookId, { scrollRatio: ratio, lastBatch: currentBatchForSave.current, ruOffset: ruOffset.current });
+    }, 2000);
+  }, [bookId]);
+
+  // Save immediately when tab is hidden or page is closing
+  useEffect(() => {
+    const onVisibilityChange = () => { if (document.visibilityState === "hidden") flushProgress(); };
+    const onBeforeUnload = () => flushProgress();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      flushProgress(); // also flush on component unmount (SPA navigation)
+    };
+  }, [flushProgress]);
 
   // ── Paragraph position cache ────────────────────────────────────────────────
   // After every layout change (new batch loaded, font settings changed), measure
