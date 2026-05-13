@@ -882,9 +882,9 @@ export default function ReaderPage() {
   const parasRead = globalReadPct * totalParas;
   const remainingParas = Math.max(0, totalParas - parasRead);
 
-  // Chapter-level progress
+  // Chapter-level progress — uses Math.floor to match TocDrawer's logic exactly
   const chapters = chaptersData?.chapters ?? [];
-  const currentParaPos = Math.round(globalReadPct * Math.max(1, totalParas));
+  const currentParaPos = Math.floor(globalReadPct * Math.max(1, totalParas));
   let currentChapterIdx = 0;
   for (let i = 0; i < chapters.length; i++) {
     if (chapters[i].position <= currentParaPos) currentChapterIdx = i;
@@ -899,6 +899,8 @@ export default function ReaderPage() {
   const chapterReadPct = currentChapter
     ? Math.min(1, Math.max(0, (currentParaPos - chapterStart) / chapterLen))
     : globalReadPct;
+  // Remaining paragraphs within the current chapter only
+  const chapterRemainingParas = Math.max(0, chapterEnd - currentParaPos);
 
   if (isLoadingBook) {
     return (
@@ -992,7 +994,7 @@ export default function ReaderPage() {
                     {Math.round(chapterReadPct * 100)}%
                   </span>
                   {` гл. ${currentChapterIdx + 1}`}
-                  {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+                  {chapterRemainingParas > 0 && ` · ${timeLeft(chapterRemainingParas)} до конца главы`}
                 </>
               ) : (
                 <>
