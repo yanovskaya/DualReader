@@ -47,6 +47,16 @@ export function sentenceIdxForCharPos(text: string, charPos: number): number {
   return sentences.length - 1;
 }
 
+/** Is this paragraph a scene/section break line (e.g. "***", "* * *", "---")? */
+export function isSceneBreak(text: string): boolean {
+  const t = text.trim();
+  // Three or more asterisks (with optional spaces between): *** / * * * / *****
+  if (/^\*(\s*\*){2,}\s*$/.test(t)) return true;
+  // Three or more dashes: --- / - - -
+  if (/^-(\s*-){2,}\s*$/.test(t)) return true;
+  return false;
+}
+
 /** Heuristic: is this paragraph a heading? */
 export function isHeadingParagraph(text: string): boolean {
   const t = text.trim();

@@ -882,6 +882,24 @@ export default function ReaderPage() {
   const parasRead = globalReadPct * totalParas;
   const remainingParas = Math.max(0, totalParas - parasRead);
 
+  // Chapter-level progress
+  const chapters = chaptersData?.chapters ?? [];
+  const currentParaPos = Math.round(globalReadPct * Math.max(1, totalParas));
+  let currentChapterIdx = 0;
+  for (let i = 0; i < chapters.length; i++) {
+    if (chapters[i].position <= currentParaPos) currentChapterIdx = i;
+    else break;
+  }
+  const currentChapter = chapters.length > 0 ? chapters[currentChapterIdx] : null;
+  const chapterStart = currentChapter?.position ?? 0;
+  const chapterEnd = currentChapterIdx + 1 < chapters.length
+    ? chapters[currentChapterIdx + 1].position
+    : totalParas;
+  const chapterLen = Math.max(1, chapterEnd - chapterStart);
+  const chapterReadPct = currentChapter
+    ? Math.min(1, Math.max(0, (currentParaPos - chapterStart) / chapterLen))
+    : globalReadPct;
+
   if (isLoadingBook) {
     return (
       <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: colors.bg }}>
@@ -925,7 +943,7 @@ export default function ReaderPage() {
         }}
       >
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: PROG_H, background: colors.border }}>
-          <div style={{ width: `${globalReadPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
+          <div style={{ width: `${chapterReadPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
         </div>
         {/* Chevron indicator — only shown when header is hidden */}
         {!showHeader && (
@@ -968,8 +986,20 @@ export default function ReaderPage() {
               {book.title}
             </div>
             <div style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
-              {Math.round(globalReadPct * 100)}%
-              {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+              {currentChapter ? (
+                <>
+                  <span style={{ color: colors.accent, fontWeight: 600 }}>
+                    {Math.round(chapterReadPct * 100)}%
+                  </span>
+                  {` гл. ${currentChapterIdx + 1}`}
+                  {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+                </>
+              ) : (
+                <>
+                  {Math.round(globalReadPct * 100)}%
+                  {remainingParas > 0 && ` · ${timeLeft(remainingParas)} осталось`}
+                </>
+              )}
               {translatedPct !== null && translatedPct < 100 && (
                 <span style={{ marginLeft: 6, color: colors.accent }}>⟳ {translatedPct}% пер.</span>
               )}

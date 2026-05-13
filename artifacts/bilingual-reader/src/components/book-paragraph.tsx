@@ -1,5 +1,5 @@
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { isHeadingParagraph } from "@/lib/sentences";
+import { isHeadingParagraph, isSceneBreak } from "@/lib/sentences";
 import type { TextAlign, ThemeColors } from "@/hooks/use-reader-settings";
 
 export interface BookParagraphProps {
@@ -28,6 +28,25 @@ export function BookParagraph({
 }: BookParagraphProps) {
   const text = paragraph.originalText;
   const isHeading = isHeadingParagraph(text);
+  const sceneBreak = isSceneBreak(text);
+
+  // ── Scene break (*** / ---) — same in both panels ──────────────────────────
+  if (sceneBreak) {
+    return (
+      <div style={{
+        padding: "28px 16px",
+        borderBottom: `1px solid ${colors.border}`,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
+      }}>
+        {[0, 1, 2].map(i => (
+          <span key={i} style={{
+            display: "inline-block", width: 5, height: 5,
+            borderRadius: "50%", background: colors.muted, opacity: 0.45,
+          }} />
+        ))}
+      </div>
+    );
+  }
 
   // ── Russian panel ──────────────────────────────────────────────────────────
   if (mode === "ru") {
