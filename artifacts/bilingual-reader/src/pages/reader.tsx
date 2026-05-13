@@ -719,6 +719,8 @@ export default function ReaderPage() {
   // Separate timers: localStorage is fast (300ms), server is slower (2000ms)
   const localSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Throttle timestamp for the DOM-fallback paragraph scan (runs max once per 500ms)
+  const domFallbackLastRun = useRef<number>(0);
 
   // Flush saves both immediately — called on visibility hide and beforeunload.
   // Does NOT save if the user hasn't scrolled yet (firstVisibleParaRef is null),
@@ -820,20 +822,24 @@ export default function ReaderPage() {
         const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
         firstVisibleParaRef.current = { id: para.id as number, position: para.position, paragraphOffset };
       }
-    } else {
-      // Fallback: paraPositions not built yet — scan DOM directly so we never lose position.
-      // This happens during the one-frame delay after batch load; throttled by the outer scroll handler.
-      for (const p of displayParagraphs) {
-        if (p.position == null) continue;
-        const el = document.getElementById(`para-${p.id}`);
-        if (!el) continue;
-        const top = offsetInContainer(el, en);
-        if (top + el.offsetHeight > en.scrollTop + 10) {
-          const paraHeight = el.offsetHeight;
-          const scrolledInto = en.scrollTop - top;
-          const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
-          firstVisibleParaRef.current = { id: p.id as number, position: p.position, paragraphOffset };
-          break;
+    } else if (paraPositions.current.length === 0) {
+      // Fallback: only when paraPositions cache is completely empty (one-frame delay after batch load).
+      // Throttled to once per 500ms to avoid expensive DOM scans on every scroll event.
+      const now = performance.now();
+      if (now - domFallbackLastRun.current > 500) {
+        domFallbackLastRun.current = now;
+        for (const p of displayParagraphs) {
+          if (p.position == null) continue;
+          const el = document.getElementById(`para-${p.id}`);
+          if (!el) continue;
+          const top = offsetInContainer(el, en);
+          if (top + el.offsetHeight > en.scrollTop + 10) {
+            const paraHeight = el.offsetHeight;
+            const scrolledInto = en.scrollTop - top;
+            const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
+            firstVisibleParaRef.current = { id: p.id as number, position: p.position, paragraphOffset };
+            break;
+          }
         }
       }
     }
