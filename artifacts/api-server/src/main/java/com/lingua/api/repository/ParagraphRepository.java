@@ -21,8 +21,7 @@ public interface ParagraphRepository extends JpaRepository<Paragraph, Integer> {
     List<Paragraph> findByBookIdAndIsTranslatedFalseOrderByPosition(Integer bookId);
 
     @Query("SELECT p FROM Paragraph p WHERE p.bookId = :bookId AND " +
-           "(LOWER(p.originalText) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "LOWER(p.translatedText) LIKE LOWER(CONCAT('%', :q, '%'))) " +
+           "LOWER(p.originalText) LIKE LOWER(CONCAT('%', :q, '%')) " +
            "ORDER BY p.position")
     List<Paragraph> searchByBookId(Integer bookId, String q, Pageable pageable);
 }

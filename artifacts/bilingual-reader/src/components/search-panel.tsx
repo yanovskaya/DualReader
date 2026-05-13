@@ -12,6 +12,16 @@ interface SearchPanelProps {
   onClose: () => void;
 }
 
+/** Extract a window of text around the first occurrence of query (≈120 chars each side). */
+function extractSnippet(text: string, query: string, radius = 120): string {
+  if (!query.trim()) return text.slice(0, radius * 2);
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text.slice(0, radius * 2);
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + query.length + radius);
+  return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
+}
+
 function highlight(text: string, query: string): (string | JSX.Element)[] {
   if (!query.trim()) return [text];
   const escapedQ = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -27,7 +37,7 @@ function highlight(text: string, query: string): (string | JSX.Element)[] {
 function Snippet({ text, query, style }: { text: string; query: string; style?: React.CSSProperties }) {
   return (
     <span style={style}>
-      {highlight(text, query)}
+      {highlight(extractSnippet(text, query), query)}
     </span>
   );
 }

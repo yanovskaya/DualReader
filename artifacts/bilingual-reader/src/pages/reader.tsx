@@ -425,7 +425,7 @@ export default function ReaderPage() {
   const startBatchRef = useRef(initBatch);
 
   // Paragraph-ID based restore: null = nothing pending, number = scroll to this paragraph
-  const pendingRestoreParagraphId = useRef<number | null>(savedProgress?.paragraphId ?? null);
+  const [pendingRestoreParagraphId, setPendingRestoreParagraphId] = useState<number | null>(savedProgress?.paragraphId ?? null);
   const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
   const pendingRestoreParagraphOffset = useRef<number>(savedProgress?.paragraphOffset ?? 0);
   // Tracks the first visible paragraph — used for saving position reliably
@@ -445,7 +445,7 @@ export default function ReaderPage() {
 
       // Sync localStorage with server value
       saveProgress(bookId, sp);
-      pendingRestoreParagraphId.current = sp.paragraphId;
+      setPendingRestoreParagraphId(sp.paragraphId);
       pendingRestoreParagraphOffset.current = sp.paragraphOffset ?? 0;
       pendingRestoreRuOffset.current = sp.ruOffset ?? null;
 
@@ -643,15 +643,17 @@ export default function ReaderPage() {
     fetch(`/api/books/${bookId}/translate`, { method: "POST" }).catch(() => {});
   }, [statusData?.status, bookId]);
 
-  // Restore scroll position by paragraph ID — fires whenever allParagraphs changes.
-  // Retries until the target paragraph is in the DOM (handles multi-batch loads).
+  // Restore scroll position by paragraph ID.
+  // Fires whenever allParagraphs OR pendingRestoreParagraphId changes — this is the key:
+  // if the server responds after the first batch is already loaded, the state change
+  // re-triggers this effect even though allParagraphs didn't change.
   useEffect(() => {
     if (allParagraphs.length === 0) return;
-    if (pendingRestoreParagraphId.current === null) {
+    if (pendingRestoreParagraphId === null) {
       enRef.current?.focus({ preventScroll: true });
       return;
     }
-    const paragraphId = pendingRestoreParagraphId.current;
+    const paragraphId = pendingRestoreParagraphId;
     // Defer to rAF so layout (and paraPositions rebuild) is complete
     const raf = requestAnimationFrame(() => {
       const el = document.getElementById(`para-${paragraphId}`);
@@ -670,11 +672,11 @@ export default function ReaderPage() {
         lastProgRuWrite.current = performance.now();
         ru.scrollTop = clampRu(ru, paragraphSync(container, ru, paraPositions.current) + ruOffset.current);
       }
-      pendingRestoreParagraphId.current = null;
+      setPendingRestoreParagraphId(null);
       container.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(raf);
-  }, [allParagraphs]);
+  }, [allParagraphs, pendingRestoreParagraphId]);
 
   // When RU panel becomes visible again, sync its position to current EN position
   useEffect(() => {

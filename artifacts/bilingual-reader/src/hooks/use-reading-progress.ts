@@ -29,13 +29,15 @@ export function saveProgress(bookId: number, progress: ReadingProgress): void {
   try { localStorage.setItem(PROGRESS_KEY(bookId), JSON.stringify(progress)); } catch {}
 }
 
-/** Persist progress to the server */
+/** Persist progress to the server.
+ *  keepalive=true ensures the request survives iOS/Safari closing the tab/PWA. */
 export async function saveProgressToServer(bookId: number, progress: ReadingProgress): Promise<void> {
   try {
     await fetch(`/api/books/${bookId}/progress`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(progress),
+      keepalive: true,
     });
   } catch {
     // silently ignore — localStorage is the fallback

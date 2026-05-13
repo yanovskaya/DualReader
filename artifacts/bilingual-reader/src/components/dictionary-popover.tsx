@@ -1,7 +1,7 @@
 import { useLookupWord, getLookupWordQueryKey } from "@workspace/api-client-react";
-import { Loader2, BookOpen } from "lucide-react";
+import { Loader2, BookOpen, RefreshCw } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface DictionaryPopoverProps {
   word: string;
@@ -38,10 +38,28 @@ export function DictionaryCard({
   accentColor?: string;
 }) {
   const cleanWord = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
+  const queryClient = useQueryClient();
+  const queryKey = getLookupWordQueryKey({ word: cleanWord, context });
+
   const { data: entry, isLoading, isError } = useLookupWord(
     { word: cleanWord, context },
-    { query: { enabled: !!cleanWord, queryKey: getLookupWordQueryKey({ word: cleanWord, context }) } }
+    {
+      query: {
+        enabled: !!cleanWord,
+        queryKey,
+        // Never keep failed/fallback lookups in cache — always refetch fresh
+        staleTime: 0,
+        gcTime: 0,
+      }
+    }
   );
+
+  // Treat "перевод недоступен" as a retriable failure (server returned it when AI was unavailable)
+  const isFallback = entry?.translations?.length === 1 && entry.translations[0] === "перевод недоступен";
+
+  const retry = () => {
+    queryClient.removeQueries({ queryKey });
+  };
 
   if (isLoading) {
     return (
@@ -52,11 +70,22 @@ export function DictionaryCard({
     );
   }
 
-  if (isError || !entry) {
+  if (isError || !entry || isFallback) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", color: mutedColor, fontSize: 13 }}>
-        <BookOpen size={14} style={{ flexShrink: 0 }} />
-        <span>Не найдено для «{word}».</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", color: mutedColor, fontSize: 13 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <BookOpen size={14} style={{ flexShrink: 0 }} />
+          <span>{isFallback ? "ИИ сейчас недоступен" : `Не найдено для «${word}»`}</span>
+        </div>
+        {isFallback && (
+          <button
+            onClick={retry}
+            style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: accentColor, fontSize: 12, padding: "2px 4px" }}
+          >
+            <RefreshCw size={12} />
+            Повторить
+          </button>
+        )}
       </div>
     );
   }
