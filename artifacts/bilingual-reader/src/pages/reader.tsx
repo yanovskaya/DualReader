@@ -14,12 +14,12 @@ import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
 import { SearchPanel } from "@/components/search-panel";
-import { saveLastBook, saveProgress, loadProgress, saveProgressToServer, loadProgressFromServer } from "@/hooks/use-reading-progress";
+import { saveLastBook, saveBookmark, saveBookmarkToServer, loadBookmark, type Bookmark as BookmarkData } from "@/hooks/use-reading-progress";
 import {
   useReaderSettings,
   THEMES,
@@ -37,30 +37,17 @@ import {
 } from "@/hooks/use-reader-settings";
 
 const PAGE_SIZE = 40;
-const WORDS_PER_MINUTE = 200;
-const AVG_WORDS_PER_PARA = 50;
-
-function timeLeft(remaining: number) {
-  const m = Math.round(remaining * AVG_WORDS_PER_PARA / WORDS_PER_MINUTE);
-  if (m < 1) return "< 1 мин";
-  if (m < 60) return `~${m} мин`;
-  return `~${Math.round(m / 60)} ч`;
-}
 
 // ── Dictionary entry ───────────────────────────────────────────────────────────
 function WordDict({ word, context, colors }: { word: string; context: string; colors: ThemeColors }) {
   const clean = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
 
-  // Extract just the sentence that contains the word so the GET URL stays short.
-  // Full paragraph text can be 26 000+ chars → HTTP 431 on long paragraphs.
   const shortContext = (() => {
     const lower = context.toLowerCase();
     const pos = lower.indexOf(clean);
     if (pos < 0) return context.slice(0, 300);
-    // Walk backwards to the nearest sentence boundary (period/newline)
     let start = pos;
     while (start > 0 && context[start - 1] !== "." && context[start - 1] !== "\n") start--;
-    // Walk forwards to the next sentence boundary
     let end = pos + clean.length;
     while (end < context.length && context[end] !== "." && context[end] !== "\n") end++;
     return context.slice(start, end + 1).trim().slice(0, 300);
@@ -74,7 +61,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
         queryKey: getLookupWordQueryKey({ word: clean, context: shortContext }),
         retry: 2,
         retryDelay: 1500,
-        staleTime: 1000 * 60 * 60 * 24 * 7, // 7 days — cache indefinitely once loaded
+        staleTime: 1000 * 60 * 60 * 24 * 7,
       },
     }
   );
@@ -104,8 +91,6 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
-      {/* Word header: word + transcription + part of speech */}
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 22, fontWeight: 700, color: colors.heading, fontFamily: "Georgia, serif" }}>
           {entry.word}
@@ -122,7 +107,6 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
         )}
       </div>
 
-      {/* Translations + synonym for each */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {entry.translations.map((t, i) => {
           const syn = entry.synonyms?.[i];
@@ -140,7 +124,6 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
         })}
       </div>
 
-      {/* Examples with Russian translations */}
       {entry.examples && entry.examples.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: colors.muted, textTransform: "uppercase" }}>
@@ -160,7 +143,6 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
           ))}
         </div>
       )}
-
     </div>
   );
 }
@@ -240,7 +222,6 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
           <div style={label}>Выравнивание текста</div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setTextAlign("left")} style={{ ...chip(settings.textAlign === "left"), display: "flex", alignItems: "center", gap: 6 }}>
-              {/* Left-align icon */}
               <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
                 <rect x="0" y="0" width="14" height="2" rx="1"/>
                 <rect x="0" y="5" width="10" height="2" rx="1"/>
@@ -249,7 +230,6 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
               По левому краю
             </button>
             <button onClick={() => setTextAlign("justify")} style={{ ...chip(settings.textAlign === "justify"), display: "flex", alignItems: "center", gap: 6 }}>
-              {/* Justify icon */}
               <svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor">
                 <rect x="0" y="0" width="14" height="2" rx="1"/>
                 <rect x="0" y="5" width="14" height="2" rx="1"/>
@@ -267,12 +247,9 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
               const active = settings.theme === t;
               return (
                 <button key={t} onClick={() => setTheme(t)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-                  {/* Swatch styled like a mini book page */}
                   <div style={{ position: "relative", width: 44, height: 52 }}>
-                    {/* Page shadow / depth layers */}
                     <div style={{ position: "absolute", bottom: 0, left: 2, right: 2, height: 48, background: THEMES[t].bg, borderRadius: "6px 6px 4px 4px", boxShadow: "1px 1px 3px rgba(0,0,0,0.18)", opacity: 0.6, transform: "rotate(-1.5deg)" }} />
                     <div style={{ position: "absolute", bottom: 0, left: 1, right: 1, height: 50, background: THEMES[t].bg, borderRadius: "6px 6px 4px 4px", boxShadow: "1px 1px 2px rgba(0,0,0,0.13)", opacity: 0.8, transform: "rotate(0.7deg)" }} />
-                    {/* Main page */}
                     <div style={{
                       position: "absolute", bottom: 0, left: 0, right: 0, height: 52,
                       borderRadius: "7px 7px 4px 4px",
@@ -283,7 +260,6 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
                         : "0 2px 6px rgba(0,0,0,0.10)",
                       transition: "all 0.15s",
                     }}>
-                      {/* Faint text lines to simulate book page */}
                       <div style={{ padding: "8px 6px 0", display: "flex", flexDirection: "column", gap: 3 }}>
                         {[100, 70, 85].map((w, i) => (
                           <div key={i} style={{ height: 2, width: `${w}%`, borderRadius: 2, background: THEMES[t].text, opacity: 0.12 }} />
@@ -313,8 +289,6 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
   if (panel.kind === "hidden") return null;
   return (
     <>
-      {/* No full-screen backdrop — it would block scroll events on EN/RU panels.
-          Closing is handled by onClick on EN/RU panels and the ✕ button. */}
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
         background: colors.drawerBg, borderRadius: "18px 18px 0 0",
@@ -349,24 +323,18 @@ function DictDrawer({ panel, colors, onClose }: { panel: PanelState; colors: The
 }
 
 // ── Scroll sync helpers ────────────────────────────────────────────────────────
-// Per-paragraph DOM positions used for paragraph-fraction sync.
-// Each entry maps one EN paragraph element's scroll range to the matching RU element.
 interface ParaPos {
   id: number;
-  enTop: number;    // offsetTop within EN scroll container
-  enBottom: number; // enTop + offsetHeight
-  ruTop: number;    // offsetTop within RU scroll container
-  ruBottom: number; // ruTop + offsetHeight
+  enTop: number;
+  enBottom: number;
+  ruTop: number;
+  ruBottom: number;
 }
 
-// Measure element's top offset relative to a scroll container.
 function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
   return el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
 }
 
-// Compute the RU scroll target that keeps the same fractional position
-// within the paragraph currently visible at the top of the EN panel.
-// Falls back to proportional when no paragraph data is available.
 function paragraphSync(
   en: HTMLElement,
   ru: HTMLElement,
@@ -379,9 +347,6 @@ function paragraphSync(
   }
 
   const enTop = en.scrollTop;
-  // Find the last paragraph whose enTop <= scroll position (binary search).
-  // That paragraph "contains" the current view — even if the view is past its enBottom
-  // (which can happen at the boundary between two paragraphs).
   let lo = 0, hi = positions.length - 1, idx = 0;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
@@ -407,101 +372,53 @@ export default function ReaderPage() {
   const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign } = useReaderSettings();
   const colors = THEMES[settings.theme];
 
-  // Load saved reading progress for this book — localStorage is instant (no flicker)
-  const savedProgress = bookId ? loadProgress(bookId) : null;
-
-  // Compute the batch that contains the saved paragraph (position / PAGE_SIZE + 1)
-  const initBatch = savedProgress?.paragraphPosition != null
-    ? Math.ceil((savedProgress.paragraphPosition + 1) / PAGE_SIZE)
+  // Load saved bookmark — determines which batch to load first
+  const savedBookmark = bookId ? loadBookmark(bookId) : null;
+  const initBatch = savedBookmark?.paragraphPosition != null
+    ? Math.ceil((savedBookmark.paragraphPosition + 1) / PAGE_SIZE)
     : 1;
 
-  // Incremental batch loading — start from saved batch if available
   const [currentBatch, setCurrentBatch] = useState(initBatch);
   const currentBatchRef = useRef(initBatch);
   const [totalBatches, setTotalBatches] = useState(1);
   const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
   const loadingNextBatch = useRef(false);
-  // Track the very first batch we loaded this session (for progress % calculation)
-  const startBatchRef = useRef(initBatch);
 
   // Paragraph-ID based restore: null = nothing pending, number = scroll to this paragraph
-  const [pendingRestoreParagraphId, setPendingRestoreParagraphId] = useState<number | null>(savedProgress?.paragraphId ?? null);
-  const pendingRestoreRuOffset = useRef<number | null>(savedProgress?.ruOffset ?? null);
-  const pendingRestoreParagraphOffset = useRef<number>(savedProgress?.paragraphOffset ?? 0);
-  // Tracks the first visible paragraph — used for saving position reliably
+  const [pendingRestoreId, setPendingRestoreId] = useState<number | null>(savedBookmark?.paragraphId ?? null);
+  const pendingRestoreRuOffset = useRef<number | null>(savedBookmark?.ruOffset ?? null);
+  const pendingRestoreParagraphOffset = useRef<number>(savedBookmark?.paragraphOffset ?? 0);
+
+  // Tracks the first visible paragraph — used when the user sets a bookmark
   const firstVisibleParaRef = useRef<{ id: number; position: number; paragraphOffset: number } | null>(null);
-  // Set to true once the initial restore scroll has executed successfully.
-  // Prevents the async server-sync from re-triggering restore after the user has started reading.
-  const hasCompletedRestoreRef = useRef(false);
+
+  // Bookmark feedback state
+  const [bookmarkSaved, setBookmarkSaved] = useState(false);
+  const bookmarkSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep currentBatchRef in sync so async callbacks always see the latest value
   useEffect(() => { currentBatchRef.current = currentBatch; }, [currentBatch]);
-
-  // On mount, fetch authoritative progress from server (survives browser cache clears)
-  useEffect(() => {
-    if (!bookId) return;
-    loadProgressFromServer(bookId).then(sp => {
-      if (!sp) return;
-
-      // Always sync localStorage so it stays fresh even if we don't re-scroll.
-      const localPos = savedProgress?.paragraphPosition ?? -1;
-      if (sp.paragraphPosition >= localPos) {
-        saveProgress(bookId, sp);
-      }
-
-      // Only re-trigger the restore scroll if:
-      //   (a) the initial restore hasn't executed yet (hasCompletedRestoreRef is false), AND
-      //   (b) the server is strictly ahead of what we had locally (or we had nothing).
-      // This prevents the server response from bouncing the user back to an old
-      // position after they've already started reading.
-      if (hasCompletedRestoreRef.current) return;
-      if (sp.paragraphPosition <= localPos && localPos >= 0) return;
-
-      setPendingRestoreParagraphId(sp.paragraphId);
-      pendingRestoreParagraphOffset.current = sp.paragraphOffset ?? 0;
-      pendingRestoreRuOffset.current = sp.ruOffset ?? null;
-
-      const neededBatch = Math.ceil((sp.paragraphPosition + 1) / PAGE_SIZE);
-      if (neededBatch > currentBatchRef.current) {
-        setCurrentBatch(neededBatch);
-        startBatchRef.current = neededBatch;
-      }
-    });
-  // intentionally run only once on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookId]);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
-  // Global toggle: show or hide Russian translations
   const [showTranslations, setShowTranslations] = useState(true);
 
   // Chapter navigation: id of paragraph we want to scroll to after load
   const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
-  // Two synced scroll panels — EN on top, RU on bottom
   const enRef = useRef<HTMLDivElement>(null);
   const ruRef = useRef<HTMLDivElement>(null);
 
   // ── Scroll sync state ──────────────────────────────────────────────────────
-  // ruOffset: how many px RU deviates from paragraph-synced position.
-  // Set by: manual RU scroll, or word click. Persists across EN scroll events.
   const ruOffset = useRef(0);
-  // lastProgRuWrite: performance.now() timestamp of the last time WE wrote
-  // ru.scrollTop programmatically. handleRuScroll ignores scroll events that
-  // fire within 100ms of such a write (they are echoes, not manual scrolls).
-  // Using a timestamp avoids clearTimeout/setTimeout churn on every EN scroll event.
   const lastProgRuWrite = useRef(0);
-  // Cached paragraph positions (EN + RU offsets). Rebuilt after each render
-  // that changes paragraph layout. Used by paragraphSync() in the scroll hot path.
   const paraPositions = useRef<ParaPos[]>([]);
 
-  const scrollPctRef = useRef(0);
-  const [scrollPct, setScrollPct] = useState(0);
-  const scrollPctTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // DOM fallback throttle for paragraph position tracking
+  const domFallbackLastRun = useRef<number>(0);
 
   // Sentinel div at the bottom of the EN panel to trigger next batch load
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -510,18 +427,15 @@ export default function ReaderPage() {
     query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
   });
 
-  // Offline fallback: load book metadata from IDB when network is unavailable
   const [offlineBook, setOfflineBook] = useState<CachedBook | null>(null);
   const [isLoadingOfflineBook, setIsLoadingOfflineBook] = useState(false);
 
   useEffect(() => {
     if (!bookId || isLoadingBookOnline || bookOnline) return;
-    // Network fetch finished with no result → try IDB
     setIsLoadingOfflineBook(true);
     loadBook(bookId).then(b => { setOfflineBook(b); setIsLoadingOfflineBook(false); }).catch(() => setIsLoadingOfflineBook(false));
   }, [bookId, isLoadingBookOnline, bookOnline]);
 
-  // Persist book metadata to IDB whenever we get it from network
   useEffect(() => {
     if (!bookOnline) return;
     saveBook({
@@ -547,7 +461,7 @@ export default function ReaderPage() {
 
   const { data: statusData } = useGetTranslationStatus(bookId, {
     query: {
-      enabled: !!bookId && !!bookOnline, // skip when offline
+      enabled: !!bookId && !!bookOnline,
       refetchInterval: 5000,
       queryKey: getGetTranslationStatusQueryKey(bookId),
     },
@@ -558,33 +472,26 @@ export default function ReaderPage() {
   });
 
   // Background prefetch ALL paragraph batches for offline use
-  // Runs once when book metadata arrives while we're online
   useEffect(() => {
     if (!bookOnline || !bookId) return;
     const totalPages = Math.ceil((bookOnline.totalParagraphs ?? 0) / PAGE_SIZE);
     if (totalPages <= 0) return;
 
-    // Fetch pages sequentially in the background, skipping the current one
-    // (already being loaded by useParagraphsOffline)
     let active = true;
     const prefetch = async () => {
       for (let page = 1; page <= totalPages && active; page++) {
-        if (page === currentBatch) continue; // already loading
+        if (page === currentBatch) continue;
         try {
           const res = await fetch(`/api/books/${bookId}/paragraphs?page=${page}&pageSize=${PAGE_SIZE}`);
           if (!res.ok || !active) continue;
           const data = await res.json();
           await saveParagraphPage(bookId, page, data);
-        } catch {
-          // silently skip — network may be gone mid-prefetch
-        }
-        // Yield between pages to avoid blocking the main thread
+        } catch {}
         await new Promise(r => setTimeout(r, 200));
       }
     };
     prefetch();
     return () => { active = false; };
-  // Only re-run if book or bookId changes (NOT currentBatch — don't restart on scroll)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookOnline?.id, bookId]);
 
@@ -601,10 +508,7 @@ export default function ReaderPage() {
     loadingNextBatch.current = false;
   }, [isSuccess, paragraphsData]);
 
-  // Deduplicate consecutive heading paragraphs with identical text (DB artifact)
-  // Keep a ref copy so scroll/event callbacks always see the current list without
-  // being in their dependency arrays (adding displayParagraphs there would recreate
-  // handlers on every batch load and re-attach scroll listeners unnecessarily).
+  // Deduplicate consecutive heading paragraphs with identical text
   const displayParagraphsRef = useRef<typeof allParagraphs>([]);
   const displayParagraphs = useMemo(() => {
     const seen = new Set<string>();
@@ -616,7 +520,6 @@ export default function ReaderPage() {
       return true;
     });
   }, [allParagraphs]);
-  // Keep the ref in sync — runs synchronously after every render where displayParagraphs changes
   useEffect(() => { displayParagraphsRef.current = displayParagraphs; }, [displayParagraphs]);
 
   // Infinite scroll — load next batch when sentinel becomes visible
@@ -638,10 +541,10 @@ export default function ReaderPage() {
     return () => observer.disconnect();
   }, [totalBatches]);
 
-  // Navigate to a chapter: load enough batches, then scroll to the paragraph element
+  // Navigate to a chapter
   const navigateToChapter = useCallback((paragraphId: number, position: number) => {
     const neededBatch = Math.ceil((position + 1) / PAGE_SIZE);
-    ruOffset.current = 0; // reset any manual offset so RU syncs cleanly after navigation
+    ruOffset.current = 0;
     setPendingScrollId(paragraphId);
     setCurrentBatch(prev => Math.max(prev, neededBatch));
   }, []);
@@ -655,30 +558,32 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!statusData) return;
     if (statusData.status === "completed") return;
-    // Fire-and-forget: the SSE stream runs in the background, polling will pick up progress
     fetch(`/api/books/${bookId}/translate`, { method: "POST" }).catch(() => {});
   }, [statusData?.status, bookId]);
 
-  // Restore scroll position by paragraph ID.
-  // Fires whenever allParagraphs OR pendingRestoreParagraphId changes — this is the key:
-  // if the server responds after the first batch is already loaded, the state change
-  // re-triggers this effect even though allParagraphs didn't change.
+  // Restore scroll to bookmark position when paragraphs are available
   useEffect(() => {
     if (allParagraphs.length === 0) return;
-    if (pendingRestoreParagraphId === null) {
+    if (pendingRestoreId === null) {
+      // Seed firstVisibleParaRef with whichever paragraph is at the top when no bookmark exists,
+      // so the bookmark button works immediately without requiring a manual scroll first.
+      if (firstVisibleParaRef.current === null && displayParagraphsRef.current.length > 0) {
+        const first = displayParagraphsRef.current[0];
+        if (first != null && first.position != null) {
+          firstVisibleParaRef.current = { id: first.id as number, position: first.position, paragraphOffset: 0 };
+        }
+      }
       enRef.current?.focus({ preventScroll: true });
       return;
     }
-    const paragraphId = pendingRestoreParagraphId;
-    // Defer to rAF so layout (and paraPositions rebuild) is complete
+    const paragraphId = pendingRestoreId;
     const raf = requestAnimationFrame(() => {
       const el = document.getElementById(`para-${paragraphId}`);
       const container = enRef.current;
-      if (!el || !container) return; // paragraph not in DOM yet — will retry on next batch
+      if (!el || !container) return;
       const top = offsetInContainer(el, container);
       const withinPara = pendingRestoreParagraphOffset.current * el.offsetHeight;
       container.scrollTop = Math.max(0, top + withinPara - 12);
-      // Restore RU offset and sync RU panel
       if (pendingRestoreRuOffset.current !== null) {
         ruOffset.current = pendingRestoreRuOffset.current;
         pendingRestoreRuOffset.current = null;
@@ -688,8 +593,7 @@ export default function ReaderPage() {
         lastProgRuWrite.current = performance.now();
         ru.scrollTop = clampRu(ru, paragraphSync(container, ru, paraPositions.current) + ruOffset.current);
       }
-      // Seed firstVisibleParaRef so flushProgress works even if user never manually scrolls.
-      // Without this, a user who opens → reads without scrolling → closes loses their place.
+      // Seed firstVisibleParaRef so bookmark button works immediately after restore
       const restoredPara = allParagraphs.find(p => p.id === paragraphId);
       if (restoredPara != null && restoredPara.position != null) {
         firstVisibleParaRef.current = {
@@ -698,13 +602,11 @@ export default function ReaderPage() {
           paragraphOffset: pendingRestoreParagraphOffset.current,
         };
       }
-      // Mark restore as completed so the async server-sync never re-triggers a scroll.
-      hasCompletedRestoreRef.current = true;
-      setPendingRestoreParagraphId(null);
+      setPendingRestoreId(null);
       container.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(raf);
-  }, [allParagraphs, pendingRestoreParagraphId]);
+  }, [allParagraphs, pendingRestoreId]);
 
   // When RU panel becomes visible again, sync its position to current EN position
   useEffect(() => {
@@ -714,7 +616,7 @@ export default function ReaderPage() {
       const ru = ruRef.current;
       if (!en || !ru) return;
       ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
-    }, 50); // wait for panel to mount + render
+    }, 50);
     return () => clearTimeout(timer);
   }, [showTranslations]);
 
@@ -722,7 +624,7 @@ export default function ReaderPage() {
   useEffect(() => {
     if (pendingScrollId === null) return;
     const target = allParagraphs.find(p => p.id === pendingScrollId);
-    if (!target) return; // not loaded yet — will retry when more batches arrive
+    if (!target) return;
     const el = document.getElementById(`para-${pendingScrollId}`);
     const container = enRef.current;
     if (el && container) {
@@ -731,71 +633,11 @@ export default function ReaderPage() {
     setPendingScrollId(null);
   }, [allParagraphs, pendingScrollId]);
 
-  // Separate timers: localStorage is fast (300ms), server is slower (2000ms)
-  const localSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const serverSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Throttle timestamp for the DOM-fallback paragraph scan (runs max once per 500ms)
-  const domFallbackLastRun = useRef<number>(0);
-
-  // Flush saves both immediately — called on visibility hide and beforeunload.
-  // Does NOT save if the user hasn't scrolled yet (firstVisibleParaRef is null),
-  // preventing overwrite of a previously-saved position with a zero/empty value.
-  const flushProgress = useCallback(() => {
-    const para = firstVisibleParaRef.current;
-    if (!para) return; // user hasn't scrolled — preserve server's saved position
-    if (localSaveTimer.current) { clearTimeout(localSaveTimer.current); localSaveTimer.current = null; }
-    if (serverSaveTimer.current) { clearTimeout(serverSaveTimer.current); serverSaveTimer.current = null; }
-    const progress = { paragraphId: para.id, paragraphPosition: para.position, paragraphOffset: para.paragraphOffset, ruOffset: ruOffset.current };
-    saveProgress(bookId, progress);
-    saveProgressToServer(bookId, progress);
-  }, [bookId]);
-
-  const saveProgressDebounced = useCallback(() => {
-    const para = firstVisibleParaRef.current;
-    if (!para) return; // no visible paragraph tracked yet
-    // localStorage: 150ms debounce — responsive but avoids blocking the main thread
-    // on every scroll event (up to 60×/s). flushProgress() saves immediately on page hide/close.
-    if (localSaveTimer.current) clearTimeout(localSaveTimer.current);
-    localSaveTimer.current = setTimeout(() => {
-      const p = firstVisibleParaRef.current;
-      if (!p) return;
-      saveProgress(bookId, { paragraphId: p.id, paragraphPosition: p.position, paragraphOffset: p.paragraphOffset, ruOffset: ruOffset.current });
-    }, 150);
-    // server: 2000ms debounce (reduce API calls)
-    if (serverSaveTimer.current) clearTimeout(serverSaveTimer.current);
-    serverSaveTimer.current = setTimeout(() => {
-      const p = firstVisibleParaRef.current;
-      if (!p) return;
-      saveProgressToServer(bookId, { paragraphId: p.id, paragraphPosition: p.position, paragraphOffset: p.paragraphOffset, ruOffset: ruOffset.current });
-    }, 2000);
-  }, [bookId]);
-
-  // Save immediately when tab is hidden or page is closing
-  useEffect(() => {
-    const onVisibilityChange = () => { if (document.visibilityState === "hidden") flushProgress(); };
-    const onBeforeUnload = () => flushProgress();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("beforeunload", onBeforeUnload);
-      flushProgress(); // also flush on component unmount (SPA navigation)
-    };
-  }, [flushProgress]);
-
   // ── Paragraph position cache ────────────────────────────────────────────────
-  // After every layout change (new batch loaded, font settings changed), measure
-  // the EN and RU offsets of each paragraph pair and cache them. The scroll hot
-  // path uses these cached values via binary search — zero DOM queries per scroll.
   useLayoutEffect(() => {
     const en = enRef.current;
     const ru = ruRef.current;
     if (!en || !ru || displayParagraphs.length === 0) return;
-    // Build synchronously — useLayoutEffect fires AFTER layout is committed so
-    // getBoundingClientRect() and offsetHeight are already stable. Building here
-    // (instead of in a rAF) means paraPositions is up-to-date BEFORE any scroll
-    // handler fires, eliminating the 1-frame window where positions were stale
-    // and firstVisibleParaRef could get stuck at the last restored position.
     const positions: ParaPos[] = [];
     for (const p of displayParagraphs) {
       const enEl = document.getElementById(`para-${p.id}`);
@@ -812,30 +654,15 @@ export default function ReaderPage() {
       });
     }
     paraPositions.current = positions;
-  // book is included so that when the book metadata arrives (making isLoadingBook go false
-  // and the EN/RU panels mount), we rebuild positions even if displayParagraphs didn't change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayParagraphs, settings.fontSize, settings.fontFamily, settings.lineSpacing, showTranslations, book]);
 
-
-  // ── EN scroll handler: syncs RU synchronously (same frame) for visual smoothness ──
+  // ── EN scroll handler ──────────────────────────────────────────────────────
   const handleEnScroll = useCallback(() => {
     const en = enRef.current;
     if (!en) return;
 
-    // Progress tracking (throttled to ≤ 6 re-renders/s via 150ms cooldown)
-    const scrollable = en.scrollHeight - en.clientHeight;
-    const ratio = scrollable > 0 ? Math.min(1, en.scrollTop / scrollable) : 0;
-    scrollPctRef.current = ratio;
-    if (!scrollPctTimer.current) {
-      scrollPctTimer.current = setTimeout(() => {
-        scrollPctTimer.current = null;
-        setScrollPct(scrollPctRef.current);
-      }, 150);
-    }
-    // Track the first visible paragraph + how far into it we've scrolled.
-    // Use displayParagraphsRef (not displayParagraphs) so this callback always sees
-    // the current list even though it is not in the dependency array.
+    // Track first visible paragraph for bookmark placement
     const visiblePos = paraPositions.current.find(p => p.enBottom > en.scrollTop + 10);
     if (visiblePos) {
       const para = displayParagraphsRef.current.find(p => p.id === visiblePos.id);
@@ -846,10 +673,6 @@ export default function ReaderPage() {
         firstVisibleParaRef.current = { id: para.id as number, position: para.position, paragraphOffset };
       }
     } else {
-      // visiblePos is undefined when: (a) paraPositions is empty, OR (b) user has scrolled
-      // past all cached positions (happens when a new batch loads but the layout effect
-      // hasn't run yet — paraPositions only covers older batches). DOM fallback handles both.
-      // Throttled to once per 500ms to avoid expensive DOM scans on every scroll event.
       const now = performance.now();
       if (now - domFallbackLastRun.current > 500) {
         domFallbackLastRun.current = now;
@@ -868,42 +691,63 @@ export default function ReaderPage() {
         }
       }
     }
-    saveProgressDebounced();
 
-    // Sync RU using paragraph-fraction sync: same fractional position within the
-    // paragraph visible at the top of EN. Zero DOM queries — uses cached positions.
+    // Sync RU panel
     const r = ruRef.current;
     if (!r) return;
     const target = clampRu(r, paragraphSync(en, r, paraPositions.current) + ruOffset.current);
     if (r.scrollTop === target) return;
-    // Stamp before writing so handleRuScroll treats this as a programmatic echo.
     lastProgRuWrite.current = performance.now();
     r.scrollTop = target;
-  }, [saveProgressDebounced]);
+  }, []);
 
-  // ── RU scroll handler: records manual offset; ignores programmatic echoes ──
+  // ── RU scroll handler ──────────────────────────────────────────────────────
   const handleRuScroll = useCallback(() => {
-    // Ignore scroll events that are echoes of our own programmatic ru.scrollTop
-    // writes. We compare against a timestamp because a timer-based lock would
-    // require clearTimeout+setTimeout on every EN scroll event (120+/sec on
-    // high-refresh mobile), causing unnecessary CPU load. 100ms covers any
-    // delayed scroll-event delivery on slow/busy mobile CPUs.
     if (performance.now() - lastProgRuWrite.current < 100) return;
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    // Guard: only update ruOffset when positions are ready. If positions are empty
-    // the proportional fallback gives a wrong offset that will break sync once
-    // positions are rebuilt.
     if (paraPositions.current.length > 0) {
       ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
-      // Only persist if the user has already scrolled (firstVisibleParaRef set),
-      // to avoid overwriting a saved position before restore is complete.
-      if (firstVisibleParaRef.current !== null) {
-        saveProgressDebounced();
+    }
+  }, []);
+
+  // ── Set bookmark manually ──────────────────────────────────────────────────
+  const setBookmarkNow = useCallback(() => {
+    let para = firstVisibleParaRef.current;
+    // Fallback: scan DOM to find the first visible paragraph if ref isn't seeded yet
+    if (!para) {
+      const en = enRef.current;
+      if (en) {
+        for (const p of displayParagraphsRef.current) {
+          if (p.position == null) continue;
+          const el = document.getElementById(`para-${p.id}`);
+          if (!el) continue;
+          const top = offsetInContainer(el, en);
+          if (top + el.offsetHeight > en.scrollTop + 10) {
+            const paraHeight = el.offsetHeight;
+            const scrolledInto = en.scrollTop - top;
+            const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
+            para = { id: p.id as number, position: p.position, paragraphOffset };
+            firstVisibleParaRef.current = para;
+            break;
+          }
+        }
       }
     }
-  }, [saveProgressDebounced]);
+    if (!para) return;
+    const bm: BookmarkData = {
+      paragraphId: para.id,
+      paragraphPosition: para.position,
+      paragraphOffset: para.paragraphOffset,
+      ruOffset: ruOffset.current,
+    };
+    saveBookmark(bookId, bm);
+    saveBookmarkToServer(bookId, bm);
+    if (bookmarkSavedTimer.current) clearTimeout(bookmarkSavedTimer.current);
+    setBookmarkSaved(true);
+    bookmarkSavedTimer.current = setTimeout(() => setBookmarkSaved(false), 2000);
+  }, [bookId]);
 
   // Sync theme to body background
   useEffect(() => {
@@ -922,50 +766,10 @@ export default function ReaderPage() {
   const headingFont = "Georgia, 'Times New Roman', serif";
   const lineHeight = LINE_SPACINGS[settings.lineSpacing].value;
 
-  // Progress info
   const translatedPct = statusData ? Math.round(statusData.progressPercent ?? 0) : null;
-  const totalParas = book?.totalParagraphs ?? 0;
 
-  // Use the exact paragraph position from the scroll tracker when available.
-  // firstVisibleParaRef is updated on every scroll event and seeded after restore.
-  // Reading a ref in render is safe here — renders are triggered by setScrollPct
-  // (150ms timer in handleEnScroll), so the value is fresh at render time.
-  const _firstVisible = firstVisibleParaRef.current;
-  const _exactPos = _firstVisible != null
-    ? _firstVisible.position + (_firstVisible.paragraphOffset ?? 0)
-    : null;
-
-  // Global read % — prefer exact position; fall back to pixel-based scrollPct estimate
-  // (used before any scroll has occurred or on first mount).
-  const parasBeforeStart = (startBatchRef.current - 1) * PAGE_SIZE;
-  const globalReadPct = totalParas > 0
-    ? (_exactPos != null
-        ? Math.min(1, _exactPos / totalParas)
-        : Math.min(1, (parasBeforeStart + scrollPct * displayParagraphs.length) / totalParas))
-    : scrollPct;
-  // Remaining = paragraphs not yet passed by the reader
-  const parasRead = globalReadPct * totalParas;
-  const remainingParas = Math.max(0, totalParas - parasRead);
-
-  // Chapter-level progress — currentParaPos is the exact position index within the book
+  // Current chapter name for the header subtitle
   const chapters = chaptersData?.chapters ?? [];
-  const currentParaPos = _exactPos ?? Math.floor(globalReadPct * Math.max(1, totalParas));
-  let currentChapterIdx = 0;
-  for (let i = 0; i < chapters.length; i++) {
-    if (chapters[i].position <= currentParaPos) currentChapterIdx = i;
-    else break;
-  }
-  const currentChapter = chapters.length > 0 ? chapters[currentChapterIdx] : null;
-  const chapterStart = currentChapter?.position ?? 0;
-  const chapterEnd = currentChapterIdx + 1 < chapters.length
-    ? chapters[currentChapterIdx + 1].position
-    : totalParas;
-  const chapterLen = Math.max(1, chapterEnd - chapterStart);
-  const chapterReadPct = currentChapter
-    ? Math.min(1, Math.max(0, (currentParaPos - chapterStart) / chapterLen))
-    : globalReadPct;
-  // Remaining paragraphs within the current chapter only
-  const chapterRemainingParas = Math.max(0, chapterEnd - currentParaPos);
 
   if (isLoadingBook) {
     return (
@@ -985,13 +789,8 @@ export default function ReaderPage() {
     );
   }
 
-  const NAV_H = 50;    // px nav row
-  const PROG_H = 3;    // px progress bar
-  // HEADER_H intentionally excludes the sync bar: when chain mode is toggled, the sync
-  // bar appears inside the fixed header as an overlay and does NOT change paddingTop of
-  // the content area. This prevents any layout-driven scroll events on the EN panel that
-  // would cause RU to jump when the chain button is pressed.
-  const HEADER_H = NAV_H + PROG_H;
+  const NAV_H = 50;
+  const HEADER_H = NAV_H;
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: colors.bg, color: colors.text }}>
@@ -1000,41 +799,35 @@ export default function ReaderPage() {
         @keyframes headerReveal{from{transform:translateY(-${NAV_H}px)}to{transform:translateY(0)}}
       `}</style>
 
-      {/* ── Always-visible progress bar (top: 0) ─────────────────────── */}
-      <div
-        onClick={() => { if (!showHeader) setShowHeader(true); }}
-        style={{
-          position: "fixed", top: 0, left: 0, right: 0, zIndex: 32,
-          height: showHeader ? PROG_H : 20,
-          cursor: showHeader ? "default" : "pointer",
-        }}
-      >
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: PROG_H, background: colors.border }}>
-          <div style={{ width: `${chapterReadPct * 100}%`, height: "100%", background: colors.accent, transition: "width 0.3s" }} />
-        </div>
-        {/* Chevron indicator — only shown when header is hidden */}
-        {!showHeader && (
+      {/* ── Tap zone to restore hidden header ─────────────────────────── */}
+      {!showHeader && (
+        <div
+          onClick={() => setShowHeader(true)}
+          style={{
+            position: "fixed", top: 0, left: 0, right: 0, zIndex: 32,
+            height: 20, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
           <div style={{
-            position: "absolute", top: PROG_H, left: "50%", transform: "translateX(-50%)",
             width: 28, height: 14,
             display: "flex", alignItems: "center", justifyContent: "center",
             background: colors.headerBg,
             borderRadius: "0 0 8px 8px",
-            borderBottom: `1px solid ${colors.border}`,
-            borderLeft: `1px solid ${colors.border}`,
-            borderRight: `1px solid ${colors.border}`,
+            border: `1px solid ${colors.border}`,
+            borderTop: "none",
             boxShadow: "0 2px 6px rgba(0,0,0,0.10)",
           }}>
             <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
               <path d="M1 1l4 4 4-4" stroke={colors.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* ── Nav header — slides away when showHeader=false ───────────── */}
+      {/* ── Nav header ───────────────────────────────────────────────── */}
       <header style={{
-        position: "fixed", top: PROG_H, left: 0, right: 0, zIndex: 30,
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 30,
         background: colors.headerBg,
         borderBottom: `1px solid ${colors.border}`,
         backdropFilter: "blur(12px)",
@@ -1052,25 +845,37 @@ export default function ReaderPage() {
             <div style={{ fontSize: 13, fontWeight: 600, color: colors.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {book.title}
             </div>
-            <div style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
-              {currentChapter ? (
-                <>
-                  <span style={{ color: colors.accent, fontWeight: 600 }}>
-                    {Math.round(chapterReadPct * 100)}%
-                  </span>
-                  {chapterRemainingParas > 0 && ` · ${timeLeft(chapterRemainingParas)} осталось`}
-                </>
-              ) : (
-                <>
-                  {Math.round(globalReadPct * 100)}%
-                  {chapterRemainingParas > 0 && ` · ${timeLeft(chapterRemainingParas)} осталось`}
-                </>
-              )}
-              {translatedPct !== null && translatedPct < 100 && (
-                <span style={{ marginLeft: 6, color: colors.accent }}>⟳ {translatedPct}% пер.</span>
-              )}
-            </div>
+            {(chapters.length > 0 || (translatedPct !== null && translatedPct < 100)) && (
+              <div style={{ fontSize: 11, color: colors.muted, marginTop: 1, display: "flex", alignItems: "center", gap: 6 }}>
+                {translatedPct !== null && translatedPct < 100 && (
+                  <span style={{ color: colors.accent }}>⟳ {translatedPct}% пер.</span>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Bookmark button */}
+          <button
+            onClick={setBookmarkNow}
+            title="Поставить закладку"
+            style={{
+              height: 34, minWidth: bookmarkSaved ? "auto" : 34,
+              padding: bookmarkSaved ? "0 10px" : "0",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              borderRadius: bookmarkSaved ? 17 : "50%",
+              background: bookmarkSaved ? colors.accent + "22" : "transparent",
+              border: bookmarkSaved ? `1px solid ${colors.accent}44` : "none",
+              cursor: "pointer",
+              color: bookmarkSaved ? colors.accent : colors.muted,
+              transition: "all 0.2s",
+              whiteSpace: "nowrap",
+              fontSize: 12, fontWeight: 600,
+            }}
+          >
+            <Bookmark size={17} style={{ fill: bookmarkSaved ? colors.accent : "none", flexShrink: 0 }} />
+            {bookmarkSaved && <span>Закладка</span>}
+          </button>
+
           <button onClick={() => { setShowToc(s => !s); setShowSettings(false); setShowSearch(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <List size={17} />
           </button>
@@ -1080,7 +885,6 @@ export default function ReaderPage() {
           <button onClick={() => { setShowSettings(s => !s); setShowToc(false); setShowSearch(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Settings2 size={17} />
           </button>
-          {/* Hide header button */}
           <button
             onClick={() => setShowHeader(false)}
             title="Скрыть панель"
@@ -1089,14 +893,12 @@ export default function ReaderPage() {
             <EyeOff size={15} />
           </button>
         </div>
-
       </header>
 
-
       {/* ── Two synced scroll panels ──────────────────────────────────── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: showHeader ? HEADER_H : PROG_H, transition: "padding-top 0.25s ease" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", paddingTop: showHeader ? HEADER_H : 20, transition: "padding-top 0.25s ease" }}>
 
-        {/* EN panel — takes 85% of space when RU is visible */}
+        {/* EN panel */}
         <div
           ref={enRef}
           onScroll={handleEnScroll}
@@ -1132,7 +934,6 @@ export default function ReaderPage() {
             </div>
           ))}
 
-          {/* Sentinel — triggers next batch load */}
           <div ref={sentinelRef} style={{ height: 1 }} />
 
           {loadingNextBatch.current && (
@@ -1151,7 +952,6 @@ export default function ReaderPage() {
         {/* RU panel divider + panel */}
         {showTranslations && (
           <>
-            {/* Divider bar with label and hide button */}
             <div style={{
               flexShrink: 0, height: 28,
               background: colors.border + "44",
@@ -1172,7 +972,6 @@ export default function ReaderPage() {
               >✕</button>
             </div>
 
-            {/* RU scroll panel — ~18% height, smaller font size */}
             <div
               ref={ruRef}
               onScroll={handleRuScroll}
@@ -1228,7 +1027,7 @@ export default function ReaderPage() {
           fontSize={settings.fontSize - 1}
           onNavigate={ch => navigateToChapter(ch.id, ch.position)}
           onClose={() => setShowToc(false)}
-          readingPct={globalReadPct}
+          readingPct={0}
           totalParagraphs={book?.totalParagraphs ?? 0}
         />
       )}

@@ -1,14 +1,10 @@
 const LAST_BOOK_KEY = "lingua_last_book";
-const PROGRESS_KEY = (bookId: number) => `lingua_progress_${bookId}`;
+const BOOKMARK_KEY = (bookId: number) => `lingua_bookmark_${bookId}`;
 
-export interface ReadingProgress {
-  /** ID of the first visible paragraph — stable anchor across reloads */
+export interface Bookmark {
   paragraphId: number;
-  /** position index of that paragraph in the book (used to compute which batch to load) */
   paragraphPosition: number;
-  /** fractional scroll offset within the paragraph (0.0–1.0), handles single-paragraph books */
   paragraphOffset?: number;
-  /** px offset of RU panel from paragraph-synced position */
   ruOffset?: number;
 }
 
@@ -24,28 +20,22 @@ export function getLastBook(): number | null {
   } catch { return null; }
 }
 
-/** Save to localStorage immediately */
-export function saveProgress(bookId: number, progress: ReadingProgress): void {
-  try { localStorage.setItem(PROGRESS_KEY(bookId), JSON.stringify(progress)); } catch {}
+export function saveBookmark(bookId: number, bookmark: Bookmark): void {
+  try { localStorage.setItem(BOOKMARK_KEY(bookId), JSON.stringify(bookmark)); } catch {}
 }
 
-/** Persist progress to the server.
- *  keepalive=true ensures the request survives iOS/Safari closing the tab/PWA. */
-export async function saveProgressToServer(bookId: number, progress: ReadingProgress): Promise<void> {
+export async function saveBookmarkToServer(bookId: number, bookmark: Bookmark): Promise<void> {
   try {
     await fetch(`/api/books/${bookId}/progress`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(progress),
+      body: JSON.stringify(bookmark),
       keepalive: true,
     });
-  } catch {
-    // silently ignore — localStorage is the fallback
-  }
+  } catch {}
 }
 
-/** Load progress from server — server is authoritative */
-export async function loadProgressFromServer(bookId: number): Promise<ReadingProgress | null> {
+export async function loadBookmarkFromServer(bookId: number): Promise<Bookmark | null> {
   try {
     const res = await fetch(`/api/books/${bookId}/progress`);
     if (!res.ok) return null;
@@ -67,12 +57,12 @@ export async function loadProgressFromServer(bookId: number): Promise<ReadingPro
   }
 }
 
-export function loadProgress(bookId: number): ReadingProgress | null {
+export function loadBookmark(bookId: number): Bookmark | null {
   try {
-    const v = localStorage.getItem(PROGRESS_KEY(bookId));
+    const v = localStorage.getItem(BOOKMARK_KEY(bookId));
     if (!v) return null;
-    const p = JSON.parse(v) as ReadingProgress;
-    if (typeof p.paragraphId !== "number" || typeof p.paragraphPosition !== "number") return null;
-    return p;
+    const b = JSON.parse(v) as Bookmark;
+    if (typeof b.paragraphId !== "number" || typeof b.paragraphPosition !== "number") return null;
+    return b;
   } catch { return null; }
 }
