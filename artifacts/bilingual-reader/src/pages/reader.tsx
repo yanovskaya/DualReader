@@ -738,9 +738,14 @@ export default function ReaderPage() {
   const saveProgressDebounced = useCallback(() => {
     const para = firstVisibleParaRef.current;
     if (!para) return; // no visible paragraph tracked yet
-    // localStorage: save immediately on every scroll (synchronous, fast)
+    // localStorage: 150ms debounce — responsive but avoids blocking the main thread
+    // on every scroll event (up to 60×/s). flushProgress() saves immediately on page hide/close.
     if (localSaveTimer.current) clearTimeout(localSaveTimer.current);
-    saveProgress(bookId, { paragraphId: para.id, paragraphPosition: para.position, paragraphOffset: para.paragraphOffset, ruOffset: ruOffset.current });
+    localSaveTimer.current = setTimeout(() => {
+      const p = firstVisibleParaRef.current;
+      if (!p) return;
+      saveProgress(bookId, { paragraphId: p.id, paragraphPosition: p.position, paragraphOffset: p.paragraphOffset, ruOffset: ruOffset.current });
+    }, 150);
     // server: 2000ms debounce (reduce API calls)
     if (serverSaveTimer.current) clearTimeout(serverSaveTimer.current);
     serverSaveTimer.current = setTimeout(() => {
