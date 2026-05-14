@@ -430,6 +430,9 @@ export default function ReaderPage() {
   const pendingRestoreParagraphOffset = useRef<number>(savedProgress?.paragraphOffset ?? 0);
   // Tracks the first visible paragraph — used for saving position reliably
   const firstVisibleParaRef = useRef<{ id: number; position: number; paragraphOffset: number } | null>(null);
+  // Set to true once the initial restore scroll has executed successfully.
+  // Prevents the async server-sync from re-triggering restore after the user has started reading.
+  const hasCompletedRestoreRef = useRef(false);
 
   // Keep currentBatchRef in sync so async callbacks always see the latest value
   useEffect(() => { currentBatchRef.current = currentBatch; }, [currentBatch]);
@@ -439,12 +442,21 @@ export default function ReaderPage() {
     if (!bookId) return;
     loadProgressFromServer(bookId).then(sp => {
       if (!sp) return;
-      // Use server data if it is at a later or equal position than what localStorage had
-      const localPos = savedProgress?.paragraphPosition ?? -1;
-      if (sp.paragraphPosition < localPos) return;
 
-      // Sync localStorage with server value
-      saveProgress(bookId, sp);
+      // Always sync localStorage so it stays fresh even if we don't re-scroll.
+      const localPos = savedProgress?.paragraphPosition ?? -1;
+      if (sp.paragraphPosition >= localPos) {
+        saveProgress(bookId, sp);
+      }
+
+      // Only re-trigger the restore scroll if:
+      //   (a) the initial restore hasn't executed yet (hasCompletedRestoreRef is false), AND
+      //   (b) the server is strictly ahead of what we had locally (or we had nothing).
+      // This prevents the server response from bouncing the user back to an old
+      // position after they've already started reading.
+      if (hasCompletedRestoreRef.current) return;
+      if (sp.paragraphPosition <= localPos && localPos >= 0) return;
+
       setPendingRestoreParagraphId(sp.paragraphId);
       pendingRestoreParagraphOffset.current = sp.paragraphOffset ?? 0;
       pendingRestoreRuOffset.current = sp.ruOffset ?? null;
@@ -454,8 +466,6 @@ export default function ReaderPage() {
         setCurrentBatch(neededBatch);
         startBatchRef.current = neededBatch;
       }
-      // If paragraph is already in the same batch: the restore effect below retries
-      // on every allParagraphs change and will scroll once the element is in the DOM.
     });
   // intentionally run only once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -688,6 +698,8 @@ export default function ReaderPage() {
           paragraphOffset: pendingRestoreParagraphOffset.current,
         };
       }
+      // Mark restore as completed so the async server-sync never re-triggers a scroll.
+      hasCompletedRestoreRef.current = true;
       setPendingRestoreParagraphId(null);
       container.focus({ preventScroll: true });
     });
