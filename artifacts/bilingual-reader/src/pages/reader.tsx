@@ -592,6 +592,10 @@ export default function ReaderPage() {
   }, [isSuccess, paragraphsData]);
 
   // Deduplicate consecutive heading paragraphs with identical text (DB artifact)
+  // Keep a ref copy so scroll/event callbacks always see the current list without
+  // being in their dependency arrays (adding displayParagraphs there would recreate
+  // handlers on every batch load and re-attach scroll listeners unnecessarily).
+  const displayParagraphsRef = useRef<typeof allParagraphs>([]);
   const displayParagraphs = useMemo(() => {
     const seen = new Set<string>();
     return allParagraphs.filter(p => {
@@ -602,6 +606,8 @@ export default function ReaderPage() {
       return true;
     });
   }, [allParagraphs]);
+  // Keep the ref in sync — runs synchronously after every render where displayParagraphs changes
+  useEffect(() => { displayParagraphsRef.current = displayParagraphs; }, [displayParagraphs]);
 
   // Infinite scroll — load next batch when sentinel becomes visible
   useEffect(() => {
@@ -709,9 +715,7 @@ export default function ReaderPage() {
     const el = document.getElementById(`para-${pendingScrollId}`);
     const container = enRef.current;
     if (el && container) {
-      // offsetTop relative to scroll container
-      const top = el.offsetTop - container.offsetTop;
-      container.scrollTo({ top: Math.max(0, top - 12), behavior: "smooth" });
+      container.scrollTo({ top: Math.max(0, offsetInContainer(el, container) - 12), behavior: "smooth" });
     }
     setPendingScrollId(null);
   }, [allParagraphs, pendingScrollId]);
@@ -817,10 +821,12 @@ export default function ReaderPage() {
         setScrollPct(scrollPctRef.current);
       }, 150);
     }
-    // Track the first visible paragraph + how far into it we've scrolled
+    // Track the first visible paragraph + how far into it we've scrolled.
+    // Use displayParagraphsRef (not displayParagraphs) so this callback always sees
+    // the current list even though it is not in the dependency array.
     const visiblePos = paraPositions.current.find(p => p.enBottom > en.scrollTop + 10);
     if (visiblePos) {
-      const para = displayParagraphs.find(p => p.id === visiblePos.id);
+      const para = displayParagraphsRef.current.find(p => p.id === visiblePos.id);
       if (para != null && para.position != null) {
         const paraHeight = visiblePos.enBottom - visiblePos.enTop;
         const scrolledInto = en.scrollTop - visiblePos.enTop;
@@ -833,7 +839,7 @@ export default function ReaderPage() {
       const now = performance.now();
       if (now - domFallbackLastRun.current > 500) {
         domFallbackLastRun.current = now;
-        for (const p of displayParagraphs) {
+        for (const p of displayParagraphsRef.current) {
           if (p.position == null) continue;
           const el = document.getElementById(`para-${p.id}`);
           if (!el) continue;
