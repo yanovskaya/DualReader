@@ -701,7 +701,6 @@ export default function ReaderPage() {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      const ruS = ru.scrollHeight - ru.clientHeight;
       ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
     }, 50); // wait for panel to mount + render
     return () => clearTimeout(timer);
