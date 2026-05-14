@@ -779,26 +779,27 @@ export default function ReaderPage() {
     const en = enRef.current;
     const ru = ruRef.current;
     if (!en || !ru || displayParagraphs.length === 0) return;
-    // Defer to next animation frame so browser finishes computing layout first
-    const raf = requestAnimationFrame(() => {
-      const positions: ParaPos[] = [];
-      for (const p of displayParagraphs) {
-        const enEl = document.getElementById(`para-${p.id}`);
-        const ruEl = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
-        if (!enEl || !ruEl) continue;
-        const enT = offsetInContainer(enEl, en);
-        const ruT = offsetInContainer(ruEl, ru);
-        positions.push({
-          id: p.id,
-          enTop: enT,
-          enBottom: enT + enEl.offsetHeight,
-          ruTop: ruT,
-          ruBottom: ruT + ruEl.offsetHeight,
-        });
-      }
-      paraPositions.current = positions;
-    });
-    return () => cancelAnimationFrame(raf);
+    // Build synchronously — useLayoutEffect fires AFTER layout is committed so
+    // getBoundingClientRect() and offsetHeight are already stable. Building here
+    // (instead of in a rAF) means paraPositions is up-to-date BEFORE any scroll
+    // handler fires, eliminating the 1-frame window where positions were stale
+    // and firstVisibleParaRef could get stuck at the last restored position.
+    const positions: ParaPos[] = [];
+    for (const p of displayParagraphs) {
+      const enEl = document.getElementById(`para-${p.id}`);
+      const ruEl = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
+      if (!enEl || !ruEl) continue;
+      const enT = offsetInContainer(enEl, en);
+      const ruT = offsetInContainer(ruEl, ru);
+      positions.push({
+        id: p.id,
+        enTop: enT,
+        enBottom: enT + enEl.offsetHeight,
+        ruTop: ruT,
+        ruBottom: ruT + ruEl.offsetHeight,
+      });
+    }
+    paraPositions.current = positions;
   // book is included so that when the book metadata arrives (making isLoadingBook go false
   // and the EN/RU panels mount), we rebuild positions even if displayParagraphs didn't change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -832,8 +833,10 @@ export default function ReaderPage() {
         const paragraphOffset = paraHeight > 0 ? Math.max(0, Math.min(1, scrolledInto / paraHeight)) : 0;
         firstVisibleParaRef.current = { id: para.id as number, position: para.position, paragraphOffset };
       }
-    } else if (paraPositions.current.length === 0) {
-      // Fallback: only when paraPositions cache is completely empty (one-frame delay after batch load).
+    } else {
+      // visiblePos is undefined when: (a) paraPositions is empty, OR (b) user has scrolled
+      // past all cached positions (happens when a new batch loads but the layout effect
+      // hasn't run yet — paraPositions only covers older batches). DOM fallback handles both.
       // Throttled to once per 500ms to avoid expensive DOM scans on every scroll event.
       const now = performance.now();
       if (now - domFallbackLastRun.current > 500) {
@@ -910,19 +913,31 @@ export default function ReaderPage() {
   // Progress info
   const translatedPct = statusData ? Math.round(statusData.progressPercent ?? 0) : null;
   const totalParas = book?.totalParagraphs ?? 0;
-  // Global read %: scrollPct is relative to currently-loaded paragraphs only.
-  // Batches before startBatch were read in a previous session — count their paragraphs too.
+
+  // Use the exact paragraph position from the scroll tracker when available.
+  // firstVisibleParaRef is updated on every scroll event and seeded after restore.
+  // Reading a ref in render is safe here — renders are triggered by setScrollPct
+  // (150ms timer in handleEnScroll), so the value is fresh at render time.
+  const _firstVisible = firstVisibleParaRef.current;
+  const _exactPos = _firstVisible != null
+    ? _firstVisible.position + (_firstVisible.paragraphOffset ?? 0)
+    : null;
+
+  // Global read % — prefer exact position; fall back to pixel-based scrollPct estimate
+  // (used before any scroll has occurred or on first mount).
   const parasBeforeStart = (startBatchRef.current - 1) * PAGE_SIZE;
   const globalReadPct = totalParas > 0
-    ? Math.min(1, (parasBeforeStart + scrollPct * displayParagraphs.length) / totalParas)
+    ? (_exactPos != null
+        ? Math.min(1, _exactPos / totalParas)
+        : Math.min(1, (parasBeforeStart + scrollPct * displayParagraphs.length) / totalParas))
     : scrollPct;
   // Remaining = paragraphs not yet passed by the reader
   const parasRead = globalReadPct * totalParas;
   const remainingParas = Math.max(0, totalParas - parasRead);
 
-  // Chapter-level progress — uses Math.floor to match TocDrawer's logic exactly
+  // Chapter-level progress — currentParaPos is the exact position index within the book
   const chapters = chaptersData?.chapters ?? [];
-  const currentParaPos = Math.floor(globalReadPct * Math.max(1, totalParas));
+  const currentParaPos = _exactPos ?? Math.floor(globalReadPct * Math.max(1, totalParas));
   let currentChapterIdx = 0;
   for (let i = 0; i < chapters.length; i++) {
     if (chapters[i].position <= currentParaPos) currentChapterIdx = i;
