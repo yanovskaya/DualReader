@@ -372,7 +372,7 @@ export default function ReaderPage() {
   const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign } = useReaderSettings();
   const colors = THEMES[settings.theme];
 
-  // Load saved bookmark — determines which batch to load first
+  // Load saved bookmark from localStorage (instant, no network)
   const savedBookmark = bookId ? loadBookmark(bookId) : null;
   const initBatch = savedBookmark?.paragraphPosition != null
     ? Math.ceil((savedBookmark.paragraphPosition + 1) / PAGE_SIZE)
@@ -389,6 +389,14 @@ export default function ReaderPage() {
   const pendingRestoreRuOffset = useRef<number | null>(savedBookmark?.ruOffset ?? null);
   const pendingRestoreParagraphOffset = useRef<number>(savedBookmark?.paragraphOffset ?? 0);
 
+  // True once the restore scroll has executed (or was skipped). Prevents a late
+  // server response from bouncing the user back to an old position.
+  const hasRestoredRef = useRef(false);
+
+  // If there is no local bookmark, we wait briefly for the server before rendering
+  // content — this ensures the correct position is used on first open (e.g. new device).
+  const [waitingForServerBookmark, setWaitingForServerBookmark] = useState(savedBookmark === null);
+
   // Tracks the first visible paragraph — used when the user sets a bookmark
   const firstVisibleParaRef = useRef<{ id: number; position: number; paragraphOffset: number } | null>(null);
 
@@ -398,6 +406,53 @@ export default function ReaderPage() {
 
   // Keep currentBatchRef in sync so async callbacks always see the latest value
   useEffect(() => { currentBatchRef.current = currentBatch; }, [currentBatch]);
+
+  // On mount: fetch bookmark from server (same DB as the book).
+  // • No local bookmark → app shows spinner until server responds (max 4 s).
+  //   This ensures the correct position is always used, even on a new device.
+  // • Local bookmark exists → start reading immediately; sync server in background.
+  //   If server is strictly ahead, update the restore target (only before restore fires).
+  useEffect(() => {
+    if (!bookId) return;
+    let cancelled = false;
+
+    const run = async () => {
+      // Timeout safety: never block longer than 4 s
+      const timeout = savedBookmark === null
+        ? new Promise<null>(r => setTimeout(() => r(null), 4000))
+        : null;
+
+      const serverBm = await (timeout
+        ? Promise.race([loadBookmarkFromServer(bookId), timeout])
+        : loadBookmarkFromServer(bookId));
+
+      if (cancelled) return;
+
+      if (serverBm) {
+        // Keep localStorage fresh for the next (same-device) open
+        saveBookmark(bookId, serverBm);
+
+        if (!hasRestoredRef.current) {
+          const localPos = savedBookmark?.paragraphPosition ?? -1;
+          if (serverBm.paragraphPosition > localPos) {
+            // Server is ahead — restore to the server position
+            setPendingRestoreId(serverBm.paragraphId);
+            pendingRestoreParagraphOffset.current = serverBm.paragraphOffset ?? 0;
+            pendingRestoreRuOffset.current = serverBm.ruOffset ?? null;
+            const neededBatch = Math.ceil((serverBm.paragraphPosition + 1) / PAGE_SIZE);
+            setCurrentBatch(prev => Math.max(prev, neededBatch));
+          }
+        }
+      }
+
+      setWaitingForServerBookmark(false);
+    };
+
+    run();
+    return () => { cancelled = true; };
+  // Intentionally run only once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
   const [showSettings, setShowSettings] = useState(false);
@@ -565,6 +620,8 @@ export default function ReaderPage() {
   useEffect(() => {
     if (allParagraphs.length === 0) return;
     if (pendingRestoreId === null) {
+      // Mark restore as done — server sync won't re-trigger a scroll after this.
+      hasRestoredRef.current = true;
       // Seed firstVisibleParaRef with whichever paragraph is at the top when no bookmark exists,
       // so the bookmark button works immediately without requiring a manual scroll first.
       if (firstVisibleParaRef.current === null && displayParagraphsRef.current.length > 0) {
@@ -602,6 +659,8 @@ export default function ReaderPage() {
           paragraphOffset: pendingRestoreParagraphOffset.current,
         };
       }
+      // Mark restore as done — prevents late server response from re-triggering scroll.
+      hasRestoredRef.current = true;
       setPendingRestoreId(null);
       container.focus({ preventScroll: true });
     });
@@ -771,7 +830,7 @@ export default function ReaderPage() {
   // Current chapter name for the header subtitle
   const chapters = chaptersData?.chapters ?? [];
 
-  if (isLoadingBook) {
+  if (isLoadingBook || waitingForServerBookmark) {
     return (
       <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: colors.bg }}>
         <Loader2 size={28} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
