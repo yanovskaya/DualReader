@@ -393,9 +393,6 @@ export default function ReaderPage() {
   // server response from bouncing the user back to an old position.
   const hasRestoredRef = useRef(false);
 
-  // If there is no local bookmark, we wait briefly for the server before rendering
-  // content — this ensures the correct position is used on first open (e.g. new device).
-  const [waitingForServerBookmark, setWaitingForServerBookmark] = useState(savedBookmark === null);
 
   // Tracks the first visible paragraph — used when the user sets a bookmark
   const firstVisibleParaRef = useRef<{ id: number; position: number; paragraphOffset: number } | null>(null);
@@ -407,24 +404,20 @@ export default function ReaderPage() {
   // Keep currentBatchRef in sync so async callbacks always see the latest value
   useEffect(() => { currentBatchRef.current = currentBatch; }, [currentBatch]);
 
-  // On mount: fetch bookmark from server (same DB as the book).
-  // • No local bookmark → app shows spinner until server responds (max 4 s).
-  //   This ensures the correct position is always used, even on a new device.
-  // • Local bookmark exists → start reading immediately; sync server in background.
-  //   If server is strictly ahead, update the restore target (only before restore fires).
+  // On mount: fetch bookmark from server in the background.
+  // Content is always shown immediately (no blocking spinner).
+  // If the server returns a position ahead of the local one, and restore
+  // hasn't fired yet, we silently update the pending restore target.
   useEffect(() => {
     if (!bookId) return;
     let cancelled = false;
 
     const run = async () => {
-      // Timeout safety: never block longer than 4 s
-      const timeout = savedBookmark === null
-        ? new Promise<null>(r => setTimeout(() => r(null), 4000))
-        : null;
+      // Timeout: 2 s — fast enough for a new-device first-open, short enough
+      // that offline users never wait.
+      const timeout = new Promise<null>(r => setTimeout(() => r(null), 2000));
 
-      const serverBm = await (timeout
-        ? Promise.race([loadBookmarkFromServer(bookId), timeout])
-        : loadBookmarkFromServer(bookId));
+      const serverBm = await Promise.race([loadBookmarkFromServer(bookId), timeout]);
 
       if (cancelled) return;
 
@@ -445,7 +438,6 @@ export default function ReaderPage() {
         }
       }
 
-      setWaitingForServerBookmark(false);
     };
 
     run();
@@ -483,13 +475,17 @@ export default function ReaderPage() {
   });
 
   const [offlineBook, setOfflineBook] = useState<CachedBook | null>(null);
-  const [isLoadingOfflineBook, setIsLoadingOfflineBook] = useState(false);
+  const [isLoadingOfflineBook, setIsLoadingOfflineBook] = useState(true);
 
+  // Load IDB book immediately on mount, in parallel with the network request.
+  // This means offline users see the book instantly without waiting for a network timeout.
   useEffect(() => {
-    if (!bookId || isLoadingBookOnline || bookOnline) return;
+    if (!bookId) return;
     setIsLoadingOfflineBook(true);
-    loadBook(bookId).then(b => { setOfflineBook(b); setIsLoadingOfflineBook(false); }).catch(() => setIsLoadingOfflineBook(false));
-  }, [bookId, isLoadingBookOnline, bookOnline]);
+    loadBook(bookId)
+      .then(b => { setOfflineBook(b); setIsLoadingOfflineBook(false); })
+      .catch(() => setIsLoadingOfflineBook(false));
+  }, [bookId]);
 
   useEffect(() => {
     if (!bookOnline) return;
@@ -506,7 +502,9 @@ export default function ReaderPage() {
   }, [bookOnline]);
 
   const book = bookOnline ?? offlineBook;
-  const isLoadingBook = isLoadingBookOnline || isLoadingOfflineBook;
+  // Show spinner only while BOTH network and IDB are still loading.
+  // As soon as either returns data (or IDB returns null), we render.
+  const isLoadingBook = isLoadingBookOnline && isLoadingOfflineBook;
 
   const { data: paragraphsData, isSuccess } = useParagraphsOffline(
     bookId,
@@ -828,7 +826,17 @@ export default function ReaderPage() {
   // Current chapter name for the header subtitle
   const chapters = chaptersData?.chapters ?? [];
 
-  if (isLoadingBook || waitingForServerBookmark) {
+  if (isLoadingBook) {
+    return (
+      <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: colors.bg }}>
+        <Loader2 size={28} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
+  // Still waiting for the network response — don't flash "not found" yet.
+  if (!book && isLoadingBookOnline) {
     return (
       <div style={{ height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: colors.bg }}>
         <Loader2 size={28} style={{ color: colors.muted, animation: "spin 1s linear infinite" }} />
