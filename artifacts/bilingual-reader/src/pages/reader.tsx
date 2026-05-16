@@ -663,7 +663,7 @@ export default function ReaderPage() {
       container.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(raf);
-  }, [allParagraphs, pendingRestoreId]);
+  }, [allParagraphs, pendingRestoreId, book]);
 
   // When RU panel becomes visible again, sync its position to current EN position
   useEffect(() => {
