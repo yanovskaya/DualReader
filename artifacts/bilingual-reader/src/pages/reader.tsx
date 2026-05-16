@@ -19,7 +19,7 @@ import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
 import { SearchPanel } from "@/components/search-panel";
-import { saveLastBook, saveBookmark, saveBookmarkToServer, loadBookmark, type Bookmark as BookmarkData } from "@/hooks/use-reading-progress";
+import { saveLastBook, saveBookmark, saveBookmarkToServer, loadBookmark, loadBookmarkFromServer, type Bookmark as BookmarkData } from "@/hooks/use-reading-progress";
 import {
   useReaderSettings,
   THEMES,
