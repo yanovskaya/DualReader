@@ -620,8 +620,6 @@ export default function ReaderPage() {
   useEffect(() => {
     if (allParagraphs.length === 0) return;
     if (pendingRestoreId === null) {
-      // Mark restore as done — server sync won't re-trigger a scroll after this.
-      hasRestoredRef.current = true;
       // Seed firstVisibleParaRef with whichever paragraph is at the top when no bookmark exists,
       // so the bookmark button works immediately without requiring a manual scroll first.
       if (firstVisibleParaRef.current === null && displayParagraphsRef.current.length > 0) {
