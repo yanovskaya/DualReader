@@ -3,6 +3,7 @@ package com.lingua.api.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnTransformer;
 
 import java.time.Instant;
 
@@ -34,6 +35,7 @@ public class Book {
     private int translatedParagraphs = 0;
 
     @Column(name = "translation_status", columnDefinition = "translation_status")
+    @ColumnTransformer(write = "?::translation_status")
     private String translationStatus = "pending";
 
     @Column(name = "created_at", nullable = false, updatable = false)
