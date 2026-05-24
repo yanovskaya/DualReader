@@ -19,6 +19,14 @@ export default function Home() {
   const search = useSearch();
   const cameFromReader = search.includes("back=1");
 
+  // Load IDB books eagerly on mount so offline users see content immediately
+  // while the network request is in-flight (or absent)
+  useEffect(() => {
+    loadAllBooks().then(books => {
+      if (books.length > 0) setOfflineBooks(books);
+    }).catch(() => {});
+  }, []);
+
   // Save books to IDB whenever we get a fresh list from the network
   useEffect(() => {
     if (!booksOnline) return;
@@ -35,12 +43,6 @@ export default function Home() {
       }).catch(() => {});
     }
   }, [booksOnline]);
-
-  // Load offline books from IDB when network fails
-  useEffect(() => {
-    if (!isError && !(!isLoadingOnline && !booksOnline)) return;
-    loadAllBooks().then(setOfflineBooks).catch(() => {});
-  }, [isError, isLoadingOnline, booksOnline]);
 
   const books = booksOnline ?? (offlineBooks.length > 0 ? offlineBooks : undefined);
   const isLoading = isLoadingOnline && !offlineBooks.length;
