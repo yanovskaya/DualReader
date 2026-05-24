@@ -100,7 +100,8 @@ public class EpubParser {
     private String extractTextFromHtml(String html) {
         String text = html.replaceAll("(?is)<script[\\s\\S]*?</script>", "");
         text = text.replaceAll("(?is)<style[\\s\\S]*?</style>", "");
-        text = text.replaceAll("(?i)</(p|div|h[1-6]|li|br|tr|blockquote)>", "\n");
+        // Block-level closing tags → double newline so splitIntoParagraphs sees separate paragraphs
+        text = text.replaceAll("(?i)</(p|div|h[1-6]|li|tr|blockquote)>", "\n\n");
         text = text.replaceAll("(?i)<br\\s*/?>", "\n");
         text = text.replaceAll("<[^>]+>", "");
         text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
