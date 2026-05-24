@@ -23,6 +23,33 @@ function splitOnInlineBreaks(text: string): string[] {
   return text.split(INLINE_BREAK_RE).map(p => p.trim()).filter(p => p.length > 0);
 }
 
+/**
+ * Safety split for paragraphs that are too long to render without crashing mobile browsers.
+ * Splits at sentence boundaries (. ! ?) to produce chunks of at most MAX_CHUNK chars.
+ */
+const MAX_CHUNK = 1500;
+
+function safeChunks(text: string): string[] {
+  if (text.length <= MAX_CHUNK) return [text];
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > MAX_CHUNK) {
+    // Find the last sentence boundary within MAX_CHUNK characters
+    const slice = remaining.slice(0, MAX_CHUNK);
+    const cut = Math.max(
+      slice.lastIndexOf(". "),
+      slice.lastIndexOf("! "),
+      slice.lastIndexOf("? "),
+      slice.lastIndexOf(".\n"),
+    );
+    const splitAt = cut > MAX_CHUNK / 2 ? cut + 2 : MAX_CHUNK;
+    chunks.push(remaining.slice(0, splitAt).trim());
+    remaining = remaining.slice(splitAt).trim();
+  }
+  if (remaining.length > 0) chunks.push(remaining);
+  return chunks;
+}
+
 /** Three-dot scene-break divider — defined at module level so React never sees a "new" type. */
 function InlineSceneBreak({ muted }: { muted: string }) {
   return (
@@ -124,7 +151,7 @@ export function BookParagraph({
       );
     }
 
-    const ruParts = ruContent ? splitOnInlineBreaks(ruContent) : null;
+    const ruParts = ruContent ? splitOnInlineBreaks(ruContent).flatMap(safeChunks) : null;
     return (
       <div style={{ padding: "4px 12px", borderBottom: `1px solid ${colors.border}` }}>
         {ruParts ? (
@@ -151,9 +178,13 @@ export function BookParagraph({
   }
 
   // ── English panel ──────────────────────────────────────────────────────────
-  const enParts = splitOnInlineBreaks(text);
+  // Split on inline scene-break markers, then further split any oversized chunk
+  // to prevent mobile browsers from crashing on huge token arrays.
+  const enParts = splitOnInlineBreaks(text).flatMap(safeChunks);
 
   if (isHeading) {
+    // Headings are rarely huge but apply the same safety cap
+    const headingText = text.length > MAX_CHUNK ? text.slice(0, MAX_CHUNK) + "…" : text;
     return (
       <div style={{ padding: "18px 16px 10px", borderBottom: `1px solid ${colors.border}` }}>
         <h2 style={{
@@ -165,7 +196,7 @@ export function BookParagraph({
           color: colors.heading,
           wordBreak: "break-word",
         }}>
-          {renderWordTokens(text, "h", onWordClick, paragraph, colors)}
+          {renderWordTokens(headingText, "h", onWordClick, paragraph, colors)}
         </h2>
       </div>
     );

@@ -108,14 +108,44 @@ public class EpubParser {
         return text;
     }
 
+    private static final int MAX_PARA_CHARS = 1500;
+
     public List<String> splitIntoParagraphs(String text) {
         List<String> result = new ArrayList<>();
         for (String p : text.split("\n{2,}")) {
             String trimmed = p.replace("\n", " ").replaceAll("\\s+", " ").trim();
-            if (trimmed.length() > 3) {
+            if (trimmed.length() <= 3) continue;
+            if (trimmed.length() <= MAX_PARA_CHARS) {
                 result.add(trimmed);
+            } else {
+                // Split long chunks at sentence boundaries
+                result.addAll(splitAtSentences(trimmed));
             }
         }
         return result;
+    }
+
+    private List<String> splitAtSentences(String text) {
+        List<String> chunks = new ArrayList<>();
+        int start = 0;
+        while (start < text.length()) {
+            if (text.length() - start <= MAX_PARA_CHARS) {
+                chunks.add(text.substring(start).trim());
+                break;
+            }
+            String slice = text.substring(start, start + MAX_PARA_CHARS);
+            // Find last sentence boundary in the slice
+            int cut = Math.max(
+                Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! ")),
+                slice.lastIndexOf("? ")
+            );
+            int splitAt = (cut > MAX_PARA_CHARS / 2) ? cut + 2 : MAX_PARA_CHARS;
+            String chunk = text.substring(start, start + splitAt).trim();
+            if (!chunk.isEmpty()) chunks.add(chunk);
+            start += splitAt;
+            // Skip leading spaces
+            while (start < text.length() && text.charAt(start) == ' ') start++;
+        }
+        return chunks;
     }
 }
