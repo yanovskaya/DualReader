@@ -113,7 +113,7 @@ export function BookCard({ book }: { book: Book }) {
         {/* Footer */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
           <span style={{ fontSize: 11, color: "#9ca3af" }}>
-            {format(new Date(book.createdAt), "d MMM yyyy")}
+            {book.createdAt ? format(new Date(book.createdAt), "d MMM yyyy") : ""}
           </span>
 
           {/* Delete button */}
