@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import {
   useGetBook,
   getGetBookQueryKey,
@@ -368,6 +368,7 @@ function clampRu(ru: HTMLElement, pos: number): number {
 export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
   const bookId = parseInt(id || "0", 10);
+  const [, navigate] = useLocation();
 
   const { settings, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign } = useReaderSettings();
   const colors = THEMES[settings.theme];
@@ -470,8 +471,8 @@ export default function ReaderPage() {
   // Sentinel div at the bottom of the EN panel to trigger next batch load
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const { data: bookOnline, isLoading: isLoadingBookOnline } = useGetBook(bookId, {
-    query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId) },
+  const { data: bookOnline, isLoading: isLoadingBookOnline, isError: isBookError } = useGetBook(bookId, {
+    query: { enabled: !!bookId, queryKey: getGetBookQueryKey(bookId), retry: 1 },
   });
 
   const [offlineBook, setOfflineBook] = useState<CachedBook | null>(null);
@@ -486,6 +487,13 @@ export default function ReaderPage() {
       .then(b => { setOfflineBook(b); setIsLoadingOfflineBook(false); })
       .catch(() => setIsLoadingOfflineBook(false));
   }, [bookId]);
+
+  // If the server says the book doesn't exist and IDB has no copy either, go home
+  useEffect(() => {
+    if (isBookError && !isLoadingOfflineBook && !offlineBook) {
+      navigate("/");
+    }
+  }, [isBookError, isLoadingOfflineBook, offlineBook, navigate]);
 
   useEffect(() => {
     if (!bookOnline) return;

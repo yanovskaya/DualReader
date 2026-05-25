@@ -48,23 +48,23 @@ export default function Home() {
   const isLoading = isLoadingOnline && !offlineBooks.length;
   const isOffline = !booksOnline && offlineBooks.length > 0;
 
-  // Auto-navigate only on fresh app open (not when user pressed ← from reader)
+  // Auto-navigate only on fresh app open, and only when server has confirmed the book list
   useEffect(() => {
     if (cameFromReader) return;
-    if (isLoading || !books) return;
-    if (books.length === 0) return;
+    if (!booksOnline) return; // wait for confirmed server data — don't navigate on stale IDB cache
+    if (booksOnline.length === 0) return;
 
     const lastId = getLastBook();
 
-    if (lastId && books.some(b => b.id === lastId)) {
+    if (lastId && booksOnline.some(b => b.id === lastId)) {
       navigate(`/reader/${lastId}`);
       return;
     }
 
-    if (books.length === 1) {
-      navigate(`/reader/${books[0].id}`);
+    if (booksOnline.length === 1) {
+      navigate(`/reader/${booksOnline[0].id}`);
     }
-  }, [isLoading, books, navigate, cameFromReader]);
+  }, [booksOnline, navigate, cameFromReader]);
 
   return (
     <Layout>
