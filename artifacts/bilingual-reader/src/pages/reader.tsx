@@ -327,37 +327,17 @@ interface ParaPos {
   id: number;
   enTop: number;
   enBottom: number;
-  ruTop: number;
-  ruBottom: number;
 }
 
 function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
   return el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
 }
 
-function paragraphSync(
-  en: HTMLElement,
-  ru: HTMLElement,
-  positions: ParaPos[],
-): number {
-  if (positions.length === 0) {
-    const enS = en.scrollHeight - en.clientHeight;
-    const ruS = ru.scrollHeight - ru.clientHeight;
-    return enS > 0 ? (en.scrollTop / enS) * ruS : 0;
-  }
-
-  const enTop = en.scrollTop;
-  let lo = 0, hi = positions.length - 1, idx = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (positions[mid].enTop <= enTop) { idx = mid; lo = mid + 1; }
-    else { hi = mid - 1; }
-  }
-  const p = positions[idx];
-  const enSpan = p.enBottom - p.enTop;
-  const fraction = enSpan > 0 ? Math.max(0, Math.min(1, (enTop - p.enTop) / enSpan)) : 0;
-  const ruSpan = p.ruBottom - p.ruTop;
-  return p.ruTop + fraction * ruSpan;
+/** Simple proportional sync: EN at X% → RU at X%. No paragraph snapping. */
+function proportionalRuSync(en: HTMLElement, ru: HTMLElement): number {
+  const enS = en.scrollHeight - en.clientHeight;
+  const ruS = ru.scrollHeight - ru.clientHeight;
+  return enS > 0 ? (en.scrollTop / enS) * ruS : 0;
 }
 
 function clampRu(ru: HTMLElement, pos: number): number {
@@ -652,7 +632,7 @@ export default function ReaderPage() {
       const ru = ruRef.current;
       if (ru) {
         lastProgRuWrite.current = performance.now();
-        ru.scrollTop = clampRu(ru, paragraphSync(container, ru, paraPositions.current) + ruOffset.current);
+        ru.scrollTop = clampRu(ru, proportionalRuSync(container, ru) + ruOffset.current);
       }
       // Seed firstVisibleParaRef so bookmark button works immediately after restore
       const restoredPara = allParagraphs.find(p => p.id === paragraphId);
@@ -678,7 +658,7 @@ export default function ReaderPage() {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      ru.scrollTop = clampRu(ru, paragraphSync(en, ru, paraPositions.current) + ruOffset.current);
+      ru.scrollTop = clampRu(ru, proportionalRuSync(en, ru) + ruOffset.current);
     }, 50);
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -704,16 +684,12 @@ export default function ReaderPage() {
     const positions: ParaPos[] = [];
     for (const p of displayParagraphs) {
       const enEl = document.getElementById(`para-${p.id}`);
-      const ruEl = ru.querySelector<HTMLElement>(`[data-ru-para="${p.id}"]`);
-      if (!enEl || !ruEl) continue;
+      if (!enEl) continue;
       const enT = offsetInContainer(enEl, en);
-      const ruT = offsetInContainer(ruEl, ru);
       positions.push({
         id: p.id,
         enTop: enT,
         enBottom: enT + enEl.offsetHeight,
-        ruTop: ruT,
-        ruBottom: ruT + ruEl.offsetHeight,
       });
     }
     paraPositions.current = positions;
@@ -758,7 +734,7 @@ export default function ReaderPage() {
     // Sync RU panel
     const r = ruRef.current;
     if (!r) return;
-    const target = clampRu(r, paragraphSync(en, r, paraPositions.current) + ruOffset.current);
+    const target = clampRu(r, proportionalRuSync(en, r) + ruOffset.current);
     if (r.scrollTop === target) return;
     lastProgRuWrite.current = performance.now();
     r.scrollTop = target;
@@ -770,9 +746,7 @@ export default function ReaderPage() {
     const ru = ruRef.current;
     const en = enRef.current;
     if (!ru || !en) return;
-    if (paraPositions.current.length > 0) {
-      ruOffset.current = ru.scrollTop - paragraphSync(en, ru, paraPositions.current);
-    }
+    ruOffset.current = ru.scrollTop - proportionalRuSync(en, ru);
   }, []);
 
   // ── Set bookmark manually ──────────────────────────────────────────────────
