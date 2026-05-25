@@ -104,6 +104,7 @@ public class CoverService {
      */
     private String generateDescription(String title, String author, String excerpt) {
         try {
+            log.info("Generating description for '{}' (excerpt {} chars)", title, excerpt == null ? 0 : excerpt.length());
             String userMsg = String.format(
                 "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
                 "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
@@ -113,15 +114,17 @@ public class CoverService {
                 excerpt
             );
 
-            return openAiService.complete("gpt-5-nano", 200,
+            String result = openAiService.complete("gpt-5-nano", 200,
                 List.of(
                     Map.of("role", "system", "content",
                         "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
                     Map.of("role", "user", "content", userMsg)
                 )
-            ).strip();
+            );
+            log.info("Description result for '{}': {} chars, blank={}", title, result == null ? -1 : result.length(), result == null || result.isBlank());
+            return result == null ? null : result.strip();
         } catch (Exception e) {
-            log.warn("Description generation failed: {}", e.getMessage());
+            log.warn("Description generation failed for '{}': {}", title, e.getMessage());
             return null;
         }
     }
