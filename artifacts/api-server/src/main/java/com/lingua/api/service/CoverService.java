@@ -7,11 +7,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +30,13 @@ public class CoverService {
     private final BookRepository bookRepo;
     private final OpenAiService openAiService;
 
-    // 12 rich, dark gradient palettes
+    // Shared HTTP client (reused across calls)
+    private static final HttpClient http = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(15))
+            .followRedirects(HttpClient.Redirect.ALWAYS)
+            .build();
+
+    // 12 rich, dark gradient palettes (SVG fallback)
     private static final String[][] PALETTES = {
         {"#1a1a2e", "#0f3460", "#e8d5b7", "#e8b86d"},
         {"#3d1a24", "#8b3a52", "#fde8d0", "#e8a87c"},
@@ -46,26 +53,37 @@ public class CoverService {
     };
 
     /**
-     * Schedules async generation of description + SVG cover for a newly uploaded book.
+     * Schedules async generation of description + AI cover image for a newly uploaded book.
      * Receives the first few paragraphs so it can call AI without a separate DB read.
      */
     public void scheduleGeneration(Integer bookId, String title, String author, List<String> firstParagraphs) {
         executor.submit(() -> {
             try {
                 String excerpt = buildExcerpt(firstParagraphs, 1500);
-                String description = generateDescription(title, author, excerpt);
-                byte[] svgBytes = generateSvgCover(title, author);
 
+                // 1. Generate Russian description from actual book text
+                String description = generateDescription(title, author, excerpt);
+
+                // 2. Generate AI image cover (Pollinations.ai — no key required)
+                byte[] coverBytes = generatePollinationsImage(title, author, description, excerpt);
+
+                // 3. Fall back to SVG if image generation failed
+                if (coverBytes == null) {
+                    log.warn("Pollinations failed for book {}, using SVG fallback", bookId);
+                    coverBytes = generateSvgCover(title, author);
+                }
+
+                final byte[] finalCover = coverBytes;
                 bookRepo.findById(bookId).ifPresent(book -> {
                     if (description != null && !description.isBlank()) {
                         book.setDescription(description);
                     }
-                    if (book.getCoverImage() == null || book.getCoverImage().length == 0) {
-                        book.setCoverImage(svgBytes);
-                    }
+                    book.setCoverImage(finalCover);
                     bookRepo.save(book);
-                    log.info("Description + SVG cover saved for book {}", bookId);
+                    log.info("Description + cover saved for book {} ({})",
+                            bookId, finalCover[0] == (byte) 0x89 ? "PNG" : "SVG");
                 });
+
             } catch (Exception e) {
                 log.warn("Cover/description generation failed for book {}: {}", bookId, e.getMessage());
             }
@@ -76,6 +94,8 @@ public class CoverService {
     public void scheduleGeneration(Integer bookId, String title, String author) {
         scheduleGeneration(bookId, title, author, List.of());
     }
+
+    // ── Description generation ────────────────────────────────────────────────
 
     /**
      * Uses OpenAI chat to write a 1-2 sentence Russian description of the book.
@@ -93,7 +113,8 @@ public class CoverService {
 
             return openAiService.complete("gpt-5-nano", 200,
                 List.of(
-                    Map.of("role", "system", "content", "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
+                    Map.of("role", "system", "content",
+                        "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
                     Map.of("role", "user", "content", userMsg)
                 )
             ).strip();
@@ -102,6 +123,93 @@ public class CoverService {
             return null;
         }
     }
+
+    // ── Cover image generation via Pollinations.ai ────────────────────────────
+
+    /**
+     * Generates an AI book cover illustration using Pollinations.ai (no API key needed).
+     * Returns PNG bytes, or null if the request fails.
+     */
+    private byte[] generatePollinationsImage(String title, String author, String description, String excerpt) {
+        try {
+            // Build a visual prompt from the book's content
+            String visualPrompt = buildCoverPrompt(title, author, description, excerpt);
+            log.info("Generating Pollinations cover for book '{}': {}", title, visualPrompt);
+
+            String encoded = URLEncoder.encode(visualPrompt, StandardCharsets.UTF_8);
+            String url = "https://image.pollinations.ai/prompt/" + encoded
+                    + "?width=512&height=768&nologo=true&model=flux&seed=" + Math.abs(title.hashCode());
+
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(60))
+                    .GET()
+                    .build();
+
+            HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+
+            if (resp.statusCode() == 200) {
+                byte[] bytes = resp.body();
+                // Verify it's a valid PNG (magic bytes: 0x89 0x50 0x4E 0x47)
+                if (bytes.length >= 4 && bytes[0] == (byte) 0x89 && bytes[1] == (byte) 0x50) {
+                    log.info("Pollinations PNG received: {} KB", bytes.length / 1024);
+                    return bytes;
+                }
+                log.warn("Pollinations returned non-PNG data (status {}, {} bytes)", resp.statusCode(), bytes.length);
+            } else {
+                log.warn("Pollinations returned HTTP {}", resp.statusCode());
+            }
+        } catch (Exception e) {
+            log.warn("Pollinations image generation failed: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Asks OpenAI to produce a concise English illustration prompt for the book cover.
+     * Falls back to a generic prompt if AI call fails.
+     */
+    private String buildCoverPrompt(String title, String author, String description, String excerpt) {
+        // Try AI-generated prompt first
+        try {
+            String context = description != null && !description.isBlank()
+                    ? description
+                    : (excerpt.length() > 400 ? excerpt.substring(0, 400) : excerpt);
+
+            String userMsg = String.format(
+                "Book: \"%s\"%s\nSummary: %s\n\n" +
+                "Write a SHORT English prompt (max 60 words) for a cinematic book cover illustration. " +
+                "Focus on mood, setting, and key visual elements. " +
+                "Style: painterly digital art, professional book cover. " +
+                "Do NOT include any text, letters, words, or typography in the description.",
+                title,
+                author != null && !author.isBlank() ? " by " + author : "",
+                context
+            );
+
+            String prompt = openAiService.complete("gpt-5-nano", 120,
+                List.of(
+                    Map.of("role", "system", "content",
+                        "You are a book cover art director. Write concise, vivid illustration prompts."),
+                    Map.of("role", "user", "content", userMsg)
+                )
+            ).strip();
+
+            // Append universal negative guidance
+            return prompt + ", highly detailed, painterly digital art, professional book cover art";
+
+        } catch (Exception e) {
+            log.warn("AI prompt generation failed, using generic: {}", e.getMessage());
+            // Generic fallback
+            return String.format(
+                "Cinematic book cover illustration for \"%s\", moody atmospheric lighting, " +
+                "painterly digital art, professional book cover, no text, no letters",
+                title
+            );
+        }
+    }
+
+    // ── SVG fallback cover ────────────────────────────────────────────────────
 
     /**
      * Generates a beautiful SVG cover from the book title hash. Always succeeds.
