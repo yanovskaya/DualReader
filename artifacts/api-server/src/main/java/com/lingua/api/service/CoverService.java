@@ -80,8 +80,10 @@ public class CoverService {
                     }
                     book.setCoverImage(finalCover);
                     bookRepo.save(book);
+                    boolean savedPng  = finalCover[0] == (byte)0x89 && finalCover[1] == (byte)0x50;
+                    boolean savedJpeg = finalCover[0] == (byte)0xFF && finalCover[1] == (byte)0xD8;
                     log.info("Description + cover saved for book {} ({})",
-                            bookId, finalCover[0] == (byte) 0x89 ? "PNG" : "SVG");
+                            bookId, savedPng ? "PNG" : savedJpeg ? "JPEG" : "SVG");
                 });
 
             } catch (Exception e) {
@@ -128,21 +130,22 @@ public class CoverService {
 
     /**
      * Generates an AI book cover illustration using Pollinations.ai (no API key needed).
-     * Returns PNG bytes, or null if the request fails.
+     * Returns image bytes (PNG or JPEG), or null if the request fails.
      */
     private byte[] generatePollinationsImage(String title, String author, String description, String excerpt) {
         try {
-            // Build a visual prompt from the book's content
             String visualPrompt = buildCoverPrompt(title, author, description, excerpt);
-            log.info("Generating Pollinations cover for book '{}': {}", title, visualPrompt);
+            log.info("Generating Pollinations cover for '{}': {}", title, visualPrompt);
 
             String encoded = URLEncoder.encode(visualPrompt, StandardCharsets.UTF_8);
+            // Use &format=jpeg for reliable binary response; Pollinations Flux supports it
             String url = "https://image.pollinations.ai/prompt/" + encoded
-                    + "?width=512&height=768&nologo=true&model=flux&seed=" + Math.abs(title.hashCode());
+                    + "?width=512&height=768&nologo=true&model=flux&format=jpeg&seed="
+                    + Math.abs(title.hashCode());
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(60))
+                    .timeout(Duration.ofSeconds(90))
                     .GET()
                     .build();
 
@@ -150,12 +153,15 @@ public class CoverService {
 
             if (resp.statusCode() == 200) {
                 byte[] bytes = resp.body();
-                // Verify it's a valid PNG (magic bytes: 0x89 0x50 0x4E 0x47)
-                if (bytes.length >= 4 && bytes[0] == (byte) 0x89 && bytes[1] == (byte) 0x50) {
-                    log.info("Pollinations PNG received: {} KB", bytes.length / 1024);
+                // Accept PNG (0x89 0x50) or JPEG (0xFF 0xD8)
+                boolean isPng  = bytes.length >= 4 && bytes[0] == (byte)0x89 && bytes[1] == (byte)0x50;
+                boolean isJpeg = bytes.length >= 2 && bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8;
+                if (isPng || isJpeg) {
+                    log.info("Pollinations image received: {} KB ({})", bytes.length / 1024, isPng ? "PNG" : "JPEG");
                     return bytes;
                 }
-                log.warn("Pollinations returned non-PNG data (status {}, {} bytes)", resp.statusCode(), bytes.length);
+                log.warn("Pollinations returned unrecognised format ({} bytes, first byte: 0x{:02X})",
+                        bytes.length, bytes.length > 0 ? bytes[0] & 0xFF : 0);
             } else {
                 log.warn("Pollinations returned HTTP {}", resp.statusCode());
             }
@@ -166,47 +172,41 @@ public class CoverService {
     }
 
     /**
-     * Asks OpenAI to produce a concise English illustration prompt for the book cover.
-     * Falls back to a generic prompt if AI call fails.
+     * Builds a reliable illustration prompt from the book's content.
+     * No extra AI call — uses description and excerpt directly (Flux understands Russian).
      */
     private String buildCoverPrompt(String title, String author, String description, String excerpt) {
-        // Try AI-generated prompt first
-        try {
-            String context = description != null && !description.isBlank()
-                    ? description
-                    : (excerpt.length() > 400 ? excerpt.substring(0, 400) : excerpt);
+        // Prefer the AI-generated description; fall back to first 300 chars of excerpt
+        String context = null;
+        if (description != null && !description.isBlank()) {
+            context = description.strip();
+        } else if (excerpt != null && !excerpt.isBlank()) {
+            context = excerpt.length() > 300 ? excerpt.substring(0, 300).strip() + "…" : excerpt.strip();
+        }
 
-            String userMsg = String.format(
-                "Book: \"%s\"%s\nSummary: %s\n\n" +
-                "Write a SHORT English prompt (max 60 words) for a cinematic book cover illustration. " +
-                "Focus on mood, setting, and key visual elements. " +
-                "Style: painterly digital art, professional book cover. " +
-                "Do NOT include any text, letters, words, or typography in the description.",
-                title,
-                author != null && !author.isBlank() ? " by " + author : "",
-                context
+        String authorPart = (author != null && !author.isBlank()) ? " by " + author : "";
+
+        String prompt;
+        if (context != null) {
+            // Flux model understands Russian; embed the description directly
+            prompt = String.format(
+                "Cinematic book cover illustration. Book: \"%s\"%s. Story: %s. " +
+                "Highly detailed painterly digital art, professional book cover, " +
+                "dramatic atmospheric lighting, rich environment, no text, no letters, no words",
+                title, authorPart, context
             );
-
-            String prompt = openAiService.complete("gpt-5-nano", 120,
-                List.of(
-                    Map.of("role", "system", "content",
-                        "You are a book cover art director. Write concise, vivid illustration prompts."),
-                    Map.of("role", "user", "content", userMsg)
-                )
-            ).strip();
-
-            // Append universal negative guidance
-            return prompt + ", highly detailed, painterly digital art, professional book cover art";
-
-        } catch (Exception e) {
-            log.warn("AI prompt generation failed, using generic: {}", e.getMessage());
-            // Generic fallback
-            return String.format(
-                "Cinematic book cover illustration for \"%s\", moody atmospheric lighting, " +
-                "painterly digital art, professional book cover, no text, no letters",
-                title
+        } else {
+            prompt = String.format(
+                "Cinematic book cover illustration for \"%s\"%s, " +
+                "dramatic atmospheric lighting, rich detailed environment, " +
+                "painterly digital art, highly detailed, professional book cover, " +
+                "no text, no letters, no words",
+                title, authorPart
             );
         }
+
+        log.info("Cover prompt for '{}': {}", title, prompt.length() > 120 ? prompt.substring(0, 120) + "…" : prompt);
+        return prompt;
     }
 
     // ── SVG fallback cover ────────────────────────────────────────────────────

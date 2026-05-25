@@ -18,6 +18,12 @@ uri = "file://artifacts/bilingual-reader/public/covers/3.png"
 type = "image"
 title = "clean dramione library no text"
 
+[[generated]]
+id = "3fMGMOSqoaSS-w-FyIVMP"
+uri = "file://attached_assets/test_pollinations.png"
+type = "image"
+title = "test quality dramione library"
+
 [[outputs]]
 id = "mSpKMwy5kKOEoTXgHu0oW"
 uri = "file://artifacts/bilingual-reader/public/icon-512.png"

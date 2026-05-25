@@ -60,11 +60,15 @@ public class BookController {
                         .contentType(MediaType.valueOf("image/svg+xml"))
                         .body(svg);
             }
-            // Detect PNG vs SVG by magic bytes
-            boolean isPng = img.length >= 4 &&
+            // Detect PNG / JPEG / SVG by magic bytes
+            boolean isPng  = img.length >= 4 &&
                     img[0] == (byte)0x89 && img[1] == (byte)0x50 &&
                     img[2] == (byte)0x4E && img[3] == (byte)0x47;
-            MediaType mt = isPng ? MediaType.IMAGE_PNG : MediaType.valueOf("image/svg+xml");
+            boolean isJpeg = img.length >= 2 &&
+                    img[0] == (byte)0xFF && img[1] == (byte)0xD8;
+            MediaType mt = isPng  ? MediaType.IMAGE_PNG
+                         : isJpeg ? MediaType.IMAGE_JPEG
+                         : MediaType.valueOf("image/svg+xml");
             return ResponseEntity.ok().contentType(mt).body(img);
         }).orElse(ResponseEntity.notFound().build());
     }
