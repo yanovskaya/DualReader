@@ -4,213 +4,185 @@ import { Book } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useDeleteBook, getListBooksQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { deleteBookCache } from "@/lib/idb";
-import { format } from "date-fns";
-import { Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
+import { BookCoverArt } from "./book-cover-art";
+
+const STATUS_DOT: Record<string, { color: string; label: string }> = {
+  pending:     { color: "#9ca3af", label: "Ожидает" },
+  in_progress: { color: "#f59e0b", label: "Переводится" },
+  completed:   { color: "#10b981", label: "Готово" },
+};
 
 export function BookCard({ book }: { book: Book }) {
   const [confirming, setConfirming] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const queryClient = useQueryClient();
+
+  const status = (book.translationStatus ?? "pending") as keyof typeof STATUS_DOT;
+  const dot = STATUS_DOT[status] ?? STATUS_DOT.pending;
 
   const progress = book.totalParagraphs > 0
     ? Math.round((book.translatedParagraphs / book.totalParagraphs) * 100)
     : 0;
 
-  type Status = "pending" | "in_progress" | "completed";
-  const status = (book.translationStatus ?? "pending") as Status;
-
-  const statusLabels: Record<Status, string> = {
-    pending: "Ожидает",
-    in_progress: "Переводится",
-    completed: "Готово",
-  };
-
-  const statusColors: Record<Status, { bg: string; text: string }> = {
-    pending:     { bg: "#e5e7eb", text: "#6b7280" },
-    in_progress: { bg: "#d1fae5", text: "#065f46" },
-    completed:   { bg: "#d1fae5", text: "#059669" },
-  };
-
-  const sc = statusColors[status];
-
   const { mutate: deleteBook, isPending: isDeleting } = useDeleteBook({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListBooksQueryKey() });
-      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListBooksQueryKey() }),
     },
   });
 
-  function handleDeleteClick(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setConfirming(true);
-  }
-
-  function handleCancelDelete(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setConfirming(false);
-  }
-
-  function handleConfirmDelete(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    // Clean up IDB cache alongside server deletion
+  function handleDelete(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    if (!confirming) { setConfirming(true); return; }
     deleteBookCache(book.id).catch(() => {});
     deleteBook({ id: book.id });
   }
 
+  function handleCancel(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    setConfirming(false);
+  }
+
   const card = (
-    <div style={{
-      position: "relative",
-      borderRadius: 16,
-      border: confirming ? "1.5px solid #ef4444" : "1.5px solid rgba(0,0,0,0.09)",
-      background: "#fff",
-      overflow: "hidden",
-      transition: "border-color 0.2s, box-shadow 0.2s",
-      boxShadow: confirming ? "0 0 0 3px rgba(239,68,68,0.10)" : "0 1px 4px rgba(0,0,0,0.06)",
-      cursor: confirming ? "default" : "pointer",
-    }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setConfirming(false); }}
+      style={{
+        position: "relative",
+        width: "100%",
+        borderRadius: 6,
+        overflow: "hidden",
+        cursor: "pointer",
+        transform: hovered ? "translateY(-6px) scale(1.02)" : "translateY(0) scale(1)",
+        transition: "transform 0.22s ease, box-shadow 0.22s ease",
+        boxShadow: hovered
+          ? "6px 14px 40px rgba(0,0,0,0.38), 2px 4px 12px rgba(0,0,0,0.22)"
+          : "3px 6px 18px rgba(0,0,0,0.22), 1px 2px 6px rgba(0,0,0,0.14)",
+      }}
+    >
+      {/* Book spine shadow on left */}
+      <div style={{
+        position: "absolute", left: 0, top: 0, bottom: 0, width: 8,
+        background: "linear-gradient(to right, rgba(0,0,0,0.35), transparent)",
+        zIndex: 2, pointerEvents: "none",
+      }} />
 
-      {/* Main card content (wrapped in Link only when not confirming) */}
-      <div style={{ padding: "18px 18px 14px" }}>
-        {/* Title row */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 6 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h3 style={{
-              margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3,
-              color: "#111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}>
-              {book.title}
-            </h3>
-            {book.author && (
-              <p style={{ margin: "2px 0 0", fontSize: 13, color: "#6b7280", fontWeight: 500 }}>
-                {book.author}
-              </p>
-            )}
-          </div>
-
-          {/* Status badge */}
-          <span style={{
-            flexShrink: 0, fontSize: 11, fontWeight: 600, borderRadius: 20,
-            padding: "3px 9px", background: sc.bg, color: sc.text, whiteSpace: "nowrap",
-          }}>
-            {statusLabels[status]}
-          </span>
-        </div>
-
-        {/* Progress */}
-        <div style={{ marginTop: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>
-            <span>{book.language || "English"}</span>
-            <span>{progress}% перевод</span>
-          </div>
-          <div style={{ height: 4, background: "#f3f4f6", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ width: `${progress}%`, height: "100%", background: "#059669", borderRadius: 2, transition: "width 0.3s" }} />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>
-            {book.createdAt ? format(new Date(book.createdAt), "d MMM yyyy") : ""}
-          </span>
-
-          {/* Delete button */}
-          {!confirming && (
-            <button
-              onClick={handleDeleteClick}
-              title="Удалить книгу"
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 28, height: 28, borderRadius: 8, border: "none",
-                background: "transparent", cursor: "pointer", color: "#d1d5db",
-                transition: "background 0.15s, color 0.15s",
-                flexShrink: 0,
-              }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.background = "#fee2e2";
-                (e.currentTarget as HTMLElement).style.color = "#ef4444";
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.background = "transparent";
-                (e.currentTarget as HTMLElement).style.color = "#d1d5db";
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
+      {/* Cover art — 2:3 ratio */}
+      <div style={{ aspectRatio: "2/3", width: "100%" }}>
+        <BookCoverArt title={book.title} author={book.author} size="md" />
       </div>
 
-      {/* Confirm overlay */}
-      {confirming && (
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: "absolute", inset: 0,
-            background: "rgba(255,255,255,0.97)",
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
-            gap: 14, padding: 20,
-            borderRadius: 16,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <AlertTriangle size={18} color="#ef4444" />
-            <span style={{ fontSize: 15, fontWeight: 600, color: "#111" }}>Удалить книгу?</span>
-          </div>
-          <p style={{ margin: 0, fontSize: 13, color: "#6b7280", textAlign: "center", lineHeight: 1.4 }}>
-            «{book.title}» и весь перевод будут удалены. Это нельзя отменить.
-          </p>
-          <div style={{ display: "flex", gap: 10, width: "100%" }}>
+      {/* Progress stripe at bottom */}
+      {status === "completed" ? null : (
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "rgba(0,0,0,0.3)" }}>
+          <div style={{ width: `${progress}%`, height: "100%", background: "#f59e0b", transition: "width 0.4s" }} />
+        </div>
+      )}
+
+      {/* Status dot */}
+      <div style={{
+        position: "absolute", top: 8, right: 8,
+        width: 8, height: 8, borderRadius: "50%",
+        background: dot.color,
+        boxShadow: `0 0 6px ${dot.color}`,
+        zIndex: 3,
+      }} title={dot.label} />
+
+      {/* Delete / confirm overlay — appears on hover */}
+      {hovered && !isDeleting && (
+        <div style={{
+          position: "absolute", top: 8, left: 8, zIndex: 4,
+        }}>
+          {!confirming ? (
             <button
-              onClick={handleCancelDelete}
+              onClick={handleDelete}
+              title="Удалить"
               style={{
-                flex: 1, padding: "9px 0", borderRadius: 10,
-                border: "1.5px solid rgba(0,0,0,0.12)", background: "#fff",
-                cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#374151",
-                transition: "background 0.15s",
+                width: 28, height: 28, borderRadius: 6,
+                border: "none", background: "rgba(0,0,0,0.55)",
+                color: "rgba(255,255,255,0.7)", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                backdropFilter: "blur(4px)",
+                transition: "background 0.15s, color 0.15s",
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f9fafb"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#fff"; }}
-            >
-              Отмена
-            </button>
-            <button
-              onClick={handleConfirmDelete}
-              disabled={isDeleting}
-              style={{
-                flex: 1, padding: "9px 0", borderRadius: 10,
-                border: "none", background: isDeleting ? "#fca5a5" : "#ef4444",
-                cursor: isDeleting ? "default" : "pointer",
-                fontSize: 14, fontWeight: 600, color: "#fff",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                transition: "background 0.15s",
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.85)";
+                (e.currentTarget as HTMLElement).style.color = "#fff";
               }}
-              onMouseEnter={e => { if (!isDeleting) (e.currentTarget as HTMLElement).style.background = "#dc2626"; }}
-              onMouseLeave={e => { if (!isDeleting) (e.currentTarget as HTMLElement).style.background = "#ef4444"; }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.55)";
+                (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.7)";
+              }}
             >
-              {isDeleting ? (
-                <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Удаление…</>
-              ) : (
-                <><Trash2 size={14} /> Удалить</>
-              )}
+              <Trash2 size={13} />
             </button>
-          </div>
+          ) : (
+            <div style={{ display: "flex", gap: 4 }}>
+              <button
+                onClick={handleDelete}
+                style={{
+                  padding: "4px 8px", fontSize: 11, fontWeight: 600,
+                  borderRadius: 6, border: "none",
+                  background: "rgba(239,68,68,0.9)", color: "#fff",
+                  cursor: "pointer", fontFamily: "system-ui, sans-serif",
+                }}
+              >
+                Удалить
+              </button>
+              <button
+                onClick={handleCancel}
+                style={{
+                  padding: "4px 8px", fontSize: 11, fontWeight: 600,
+                  borderRadius: 6, border: "none",
+                  background: "rgba(0,0,0,0.55)", color: "#fff",
+                  cursor: "pointer", fontFamily: "system-ui, sans-serif",
+                  backdropFilter: "blur(4px)",
+                }}
+              >
+                Отмена
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isDeleting && (
+        <div style={{
+          position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5,
+        }}>
+          <Loader2 size={24} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
         </div>
       )}
     </div>
   );
 
-  // Wrap with Link only when not in confirm state
-  if (confirming || isDeleting) {
-    return card;
-  }
-
   return (
-    <Link href={`/reader/${book.id}`} style={{ display: "block", textDecoration: "none" }}>
-      {card}
-    </Link>
+    <div>
+      <Link href={`/reader/${book.id}`} style={{ display: "block", textDecoration: "none" }}>
+        {card}
+      </Link>
+      {/* Book title below cover */}
+      <div style={{ marginTop: 10, paddingLeft: 2 }}>
+        <p style={{
+          margin: 0, fontSize: 13, fontWeight: 600,
+          color: "#1a1a1a", lineHeight: 1.3,
+          fontFamily: "Georgia, serif",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {book.title}
+        </p>
+        {book.author && (
+          <p style={{
+            margin: "2px 0 0", fontSize: 11, color: "#6b7280",
+            fontFamily: "system-ui, sans-serif",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {book.author}
+          </p>
+        )}
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
   );
 }
