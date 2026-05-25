@@ -3,10 +3,9 @@ import { useListBooks, getListBooksQueryKey } from "@workspace/api-client-react"
 import { Layout } from "@/components/layout";
 import { BookCard } from "@/components/book-card";
 import { Button } from "@/components/ui/button";
-import { Link, useLocation, useSearch } from "wouter";
+import { Link } from "wouter";
 import { Plus, BookOpen, WifiOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getLastBook } from "@/hooks/use-reading-progress";
 import { saveBook, loadAllBooks } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 
@@ -15,9 +14,6 @@ export default function Home() {
     query: { queryKey: getListBooksQueryKey() }
   });
   const [offlineBooks, setOfflineBooks] = useState<CachedBook[]>([]);
-  const [, navigate] = useLocation();
-  const search = useSearch();
-  const cameFromReader = search.includes("back=1");
 
   // Load IDB books eagerly on mount so offline users see content immediately
   // while the network request is in-flight (or absent)
@@ -48,23 +44,6 @@ export default function Home() {
   const isLoading = isLoadingOnline && !offlineBooks.length;
   const isOffline = !booksOnline && offlineBooks.length > 0;
 
-  // Auto-navigate only on fresh app open, and only when server has confirmed the book list
-  useEffect(() => {
-    if (cameFromReader) return;
-    if (!booksOnline) return; // wait for confirmed server data — don't navigate on stale IDB cache
-    if (booksOnline.length === 0) return;
-
-    const lastId = getLastBook();
-
-    if (lastId && booksOnline.some(b => b.id === lastId)) {
-      navigate(`/reader/${lastId}`);
-      return;
-    }
-
-    if (booksOnline.length === 1) {
-      navigate(`/reader/${booksOnline[0].id}`);
-    }
-  }, [booksOnline, navigate, cameFromReader]);
 
   return (
     <Layout>
@@ -73,7 +52,7 @@ export default function Home() {
           <div>
             <h1 className="text-4xl font-serif font-bold text-primary mb-2">Библиотека</h1>
             <p className="text-muted-foreground text-lg">
-              Продолжить чтение с последнего места.
+              Выберите книгу, чтобы продолжить чтение.
             </p>
           </div>
           {!isOffline && (
