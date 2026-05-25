@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { useListBooks, getListBooksQueryKey } from "@workspace/api-client-react";
-import { Link } from "wouter";
-import { Plus, WifiOff, BookOpen, ArrowRight, Clock } from "lucide-react";
-import { saveBook, loadAllBooks, deleteBookCache } from "@/lib/idb";
-import { useDeleteBook } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
+import { Plus, WifiOff, BookOpen, ArrowRight, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { saveBook, loadAllBooks } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Book } from "@workspace/api-client-react/src/generated/api.schemas";
 import { BookCoverArt } from "@/components/book-cover-art";
@@ -22,9 +20,10 @@ function getStatusLabel(status?: string | null) {
 function BookHeroCard({ book }: { book: Book | CachedBook }) {
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  // Try static pre-generated PNG first; fall back to API (always returns SVG/PNG)
+  const [coverHovered, setCoverHovered] = useState(false);
+  const [descOpen, setDescOpen] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
+  const [, navigate] = useLocation();
 
   const status = getStatusLabel((book as Book).translationStatus);
   const progress = (book.totalParagraphs ?? 0) > 0
@@ -35,19 +34,17 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
     ? `/api/books/${book.id}/cover`
     : `/covers/${book.id}.png`;
 
+  const description = (book as Book).description;
+
   return (
-    <Link href={`/reader/${book.id}`} style={{ display: "block", textDecoration: "none" }}>
-      <article
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+    <article style={{ width: "min(520px, 100%)", margin: "0 auto" }}>
+
+      {/* ── Cover (clickable) ── */}
+      <div
+        onClick={() => navigate(`/reader/${book.id}`)}
+        onMouseEnter={() => setCoverHovered(true)}
+        onMouseLeave={() => setCoverHovered(false)}
         style={{
-          width: "min(520px, 100%)",
-          margin: "0 auto",
-          cursor: "pointer",
-        }}
-      >
-        {/* ── Cover ── */}
-        <div style={{
           position: "relative",
           width: "100%",
           aspectRatio: "2/3",
@@ -55,169 +52,175 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
           overflow: "hidden",
           borderRadius: 16,
           background: "#1a1a2e",
-          transform: hovered ? "scale(1.012)" : "scale(1)",
-          transition: "transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.4s ease",
-          boxShadow: hovered
+          cursor: "pointer",
+          transform: coverHovered ? "scale(1.012)" : "scale(1)",
+          transition: "transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94), box-shadow 0.4s ease",
+          boxShadow: coverHovered
             ? "0 32px 80px rgba(0,0,0,0.50), 0 8px 24px rgba(0,0,0,0.30)"
             : "0 16px 48px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.18)",
+        }}
+      >
+        {/* Cover image */}
+        {!imgError && (
+          <img
+            src={coverSrc}
+            alt={book.title}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => {
+              if (!useFallback) {
+                setUseFallback(true);
+                setImgLoaded(false);
+              } else {
+                setImgError(true);
+              }
+            }}
+            style={{
+              position: "absolute", inset: 0,
+              width: "100%", height: "100%",
+              objectFit: "cover",
+              opacity: imgLoaded ? 1 : 0,
+              transition: "opacity 0.5s ease",
+            }}
+          />
+        )}
+
+        {/* Gradient CSS cover — fallback */}
+        <div style={{
+          position: "absolute", inset: 0,
+          opacity: imgLoaded && !imgError ? 0 : 1,
+          transition: "opacity 0.5s ease",
         }}>
+          <BookCoverArt title={book.title} author={(book as Book).author} size="lg" />
+        </div>
 
-          {/* Cover image: static PNG first, then API fallback (SVG/PNG from DB) */}
-          {!imgError && (
-            <img
-              src={coverSrc}
-              alt={book.title}
-              onLoad={() => setImgLoaded(true)}
-              onError={() => {
-                if (!useFallback) {
-                  // Static PNG not found — switch to API endpoint
-                  setUseFallback(true);
-                  setImgLoaded(false);
-                } else {
-                  // API also failed — show gradient CSS cover
-                  setImgError(true);
-                }
-              }}
-              style={{
-                position: "absolute", inset: 0,
-                width: "100%", height: "100%",
-                objectFit: "cover",
-                opacity: imgLoaded ? 1 : 0,
-                transition: "opacity 0.5s ease",
-              }}
-            />
-          )}
+        {/* Bottom gradient for text legibility */}
+        <div style={{
+          position: "absolute", left: 0, right: 0, bottom: 0,
+          height: "55%",
+          background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.5) 45%, transparent 100%)",
+          pointerEvents: "none",
+        }} />
 
-          {/* Gradient CSS cover — fallback or beneath image */}
-          <div style={{
-            position: "absolute", inset: 0,
-            opacity: imgLoaded && !imgError ? 0 : 1,
-            transition: "opacity 0.5s ease",
+        {/* Title + author on cover */}
+        <div style={{ position: "absolute", left: 24, right: 24, bottom: 24 }}>
+          <h2 style={{
+            margin: 0,
+            fontSize: "clamp(20px,4vw,28px)",
+            fontFamily: "Georgia,'Times New Roman',serif",
+            fontWeight: 700, color: "#fff", lineHeight: 1.25,
+            textShadow: "0 2px 12px rgba(0,0,0,0.6)",
           }}>
-            <BookCoverArt title={book.title} author={(book as Book).author} size="lg" />
-          </div>
-
-          {/* Bottom gradient overlay for text legibility */}
-          <div style={{
-            position: "absolute", left: 0, right: 0, bottom: 0,
-            height: "55%",
-            background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 45%, transparent 100%)",
-            pointerEvents: "none",
-          }} />
-
-          {/* Title + author on the cover */}
-          <div style={{
-            position: "absolute", left: 24, right: 24, bottom: 24,
-          }}>
-            <h2 style={{
-              margin: 0,
-              fontSize: "clamp(20px, 4vw, 28px)",
-              fontFamily: "Georgia, 'Times New Roman', serif",
-              fontWeight: 700,
-              color: "#fff",
-              lineHeight: 1.25,
-              textShadow: "0 2px 12px rgba(0,0,0,0.6)",
-              letterSpacing: "-0.01em",
+            {book.title}
+          </h2>
+          {(book as Book).author && (
+            <p style={{
+              margin: "6px 0 0",
+              fontSize: "clamp(12px,2.5vw,14px)",
+              fontFamily: "system-ui,sans-serif",
+              color: "rgba(255,255,255,0.72)",
+              letterSpacing: "0.1em", textTransform: "uppercase",
+              textShadow: "0 1px 6px rgba(0,0,0,0.5)",
             }}>
-              {book.title}
-            </h2>
-            {(book as Book).author && (
+              {(book as Book).author}
+            </p>
+          )}
+        </div>
+
+        {/* Status badge */}
+        <div style={{
+          position: "absolute", top: 16, right: 16,
+          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)",
+          borderRadius: 20, padding: "5px 10px",
+          display: "flex", alignItems: "center", gap: 5,
+        }}>
+          <div style={{
+            width: 7, height: 7, borderRadius: "50%",
+            background: status.color, boxShadow: `0 0 6px ${status.color}`,
+          }} />
+          <span style={{ fontSize: 11, fontFamily: "system-ui,sans-serif", color: "rgba(255,255,255,0.88)", fontWeight: 500 }}>
+            {status.text}
+          </span>
+        </div>
+
+        {/* Spine shadow */}
+        <div style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: 12,
+          background: "linear-gradient(to right,rgba(0,0,0,0.4),transparent)",
+          pointerEvents: "none",
+        }} />
+      </div>
+
+      {/* ── Metadata (outside cover click zone) ── */}
+      <div style={{ marginTop: 20, padding: "0 4px" }}>
+
+        {/* Description toggle */}
+        {description && (
+          <div style={{ marginBottom: 14 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setDescOpen(v => !v); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                background: "none", border: "none", padding: "2px 0",
+                cursor: "pointer", color: "#9c856a",
+                fontSize: 13, fontFamily: "system-ui,sans-serif",
+                fontWeight: 500, letterSpacing: "0.02em",
+              }}
+            >
+              О книге
+              {descOpen
+                ? <ChevronUp size={13} />
+                : <ChevronDown size={13} />}
+            </button>
+
+            {descOpen && (
               <p style={{
-                margin: "6px 0 0",
-                fontSize: "clamp(12px, 2.5vw, 14px)",
-                fontFamily: "system-ui, sans-serif",
-                color: "rgba(255,255,255,0.72)",
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                textShadow: "0 1px 6px rgba(0,0,0,0.5)",
+                margin: "8px 0 0",
+                fontSize: 14, lineHeight: 1.65,
+                color: "#5c4a30",
+                fontFamily: "Georgia,serif",
+                fontStyle: "italic",
+                borderLeft: "2px solid rgba(124,79,30,0.2)",
+                paddingLeft: 12,
               }}>
-                {(book as Book).author}
+                {description}
               </p>
             )}
           </div>
+        )}
 
-          {/* Status badge top-right */}
-          <div style={{
-            position: "absolute", top: 16, right: 16,
-            background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(8px)",
-            borderRadius: 20,
-            padding: "5px 10px",
-            display: "flex", alignItems: "center", gap: 5,
-          }}>
-            <div style={{
-              width: 7, height: 7, borderRadius: "50%",
-              background: status.color,
-              boxShadow: `0 0 6px ${status.color}`,
-            }} />
-            <span style={{
-              fontSize: 11, fontFamily: "system-ui, sans-serif",
-              color: "rgba(255,255,255,0.88)", fontWeight: 500,
-            }}>
-              {status.text}
-            </span>
+        {/* Progress + Read CTA */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            {(book as Book).translationStatus !== "completed" && (book.totalParagraphs ?? 0) > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 80, height: 3, background: "rgba(0,0,0,0.12)", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${progress}%`, height: "100%", background: "#f59e0b" }} />
+                </div>
+                <span style={{ fontSize: 11, color: "#9c856a", fontFamily: "system-ui,sans-serif" }}>
+                  {progress}%
+                </span>
+              </div>
+            )}
+            {(book as Book).translationStatus === "completed" && (
+              <span style={{ fontSize: 11, color: "#10b981", fontFamily: "system-ui,sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
+                <Clock size={11} /> Готово к чтению
+              </span>
+            )}
           </div>
 
-          {/* Spine shadow */}
-          <div style={{
-            position: "absolute", left: 0, top: 0, bottom: 0, width: 12,
-            background: "linear-gradient(to right, rgba(0,0,0,0.4), transparent)",
-            pointerEvents: "none",
-          }} />
-        </div>
-
-        {/* ── Below cover ── */}
-        <div style={{ marginTop: 20, padding: "0 4px" }}>
-
-          {/* Description */}
-          {(book as Book).description && (
-            <p style={{
-              margin: "0 0 14px",
-              fontSize: 14, lineHeight: 1.6,
-              color: "#5c4a30",
-              fontFamily: "Georgia, serif",
-              fontStyle: "italic",
-            }}>
-              {(book as Book).description}
-            </p>
-          )}
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              {/* Progress bar */}
-              {(book as Book).translationStatus !== "completed" && (book.totalParagraphs ?? 0) > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 80, height: 3, background: "rgba(0,0,0,0.12)", borderRadius: 2, overflow: "hidden" }}>
-                    <div style={{ width: `${progress}%`, height: "100%", background: "#f59e0b" }} />
-                  </div>
-                  <span style={{ fontSize: 11, color: "#9c856a", fontFamily: "system-ui, sans-serif" }}>
-                    {progress}%
-                  </span>
-                </div>
-              )}
-              {(book as Book).translationStatus === "completed" && (
-                <span style={{ fontSize: 11, color: "#10b981", fontFamily: "system-ui, sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
-                  <Clock size={11} /> Готово к чтению
-                </span>
-              )}
-            </div>
-
-            {/* Read CTA */}
+          <Link href={`/reader/${book.id}`} style={{ textDecoration: "none" }}>
             <div style={{
               display: "flex", alignItems: "center", gap: 6,
-              background: hovered ? "#7c4f1e" : "rgba(124,79,30,0.12)",
-              color: hovered ? "#fff" : "#7c4f1e",
+              background: "rgba(124,79,30,0.12)", color: "#7c4f1e",
               padding: "8px 16px", borderRadius: 30,
-              fontSize: 13, fontWeight: 600,
-              fontFamily: "system-ui, sans-serif",
-              transition: "background 0.2s, color 0.2s",
+              fontSize: 13, fontWeight: 600, fontFamily: "system-ui,sans-serif",
             }}>
               Читать <ArrowRight size={14} />
             </div>
-          </div>
+          </Link>
         </div>
-      </article>
-    </Link>
+      </div>
+    </article>
   );
 }
 
@@ -257,28 +260,22 @@ export default function Home() {
     <div style={{
       minHeight: "100dvh",
       background: "#F4EFE6",
-      backgroundImage: "radial-gradient(ellipse at 50% 0%, rgba(139,90,43,0.08) 0%, transparent 70%)",
+      backgroundImage: "radial-gradient(ellipse at 50% 0%,rgba(139,90,43,0.08) 0%,transparent 70%)",
     }}>
-
-      {/* ── Sticky header ─────────────────────────────────────────────── */}
+      {/* Header */}
       <header style={{
         position: "sticky", top: 0, zIndex: 40,
-        background: "rgba(244,239,230,0.90)",
-        backdropFilter: "blur(16px)",
+        background: "rgba(244,239,230,0.90)", backdropFilter: "blur(16px)",
         borderBottom: "1px solid rgba(139,90,43,0.10)",
       }}>
         <div style={{
           maxWidth: 640, margin: "0 auto",
-          height: 56, display: "flex",
-          alignItems: "center", justifyContent: "space-between",
+          height: 56, display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "0 24px",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <BookOpen size={19} color="#7c4f1e" strokeWidth={1.8} />
-            <span style={{
-              fontSize: 17, fontWeight: 700,
-              fontFamily: "Georgia, serif", color: "#3d2008",
-            }}>
+            <span style={{ fontSize: 17, fontWeight: 700, fontFamily: "Georgia,serif", color: "#3d2008" }}>
               Lingua
             </span>
           </div>
@@ -288,8 +285,7 @@ export default function Home() {
               background: "#7c4f1e", color: "#fff",
               border: "none", borderRadius: 24,
               padding: "8px 18px", fontSize: 13, fontWeight: 600,
-              fontFamily: "system-ui, sans-serif",
-              cursor: "pointer",
+              fontFamily: "system-ui,sans-serif", cursor: "pointer",
               boxShadow: "0 2px 10px rgba(124,79,30,0.28)",
             }}>
               <Plus size={15} /> Книга
@@ -298,56 +294,39 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ── Offline notice ─────────────────────────────────────────────── */}
       {isOffline && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-          padding: "8px 16px",
-          background: "rgba(139,90,43,0.10)",
-          fontSize: 12, color: "#7c4f1e",
-          fontFamily: "system-ui, sans-serif",
+          padding: "8px 16px", background: "rgba(139,90,43,0.10)",
+          fontSize: 12, color: "#7c4f1e", fontFamily: "system-ui,sans-serif",
         }}>
           <WifiOff size={12} /> Офлайн — кешированные книги
         </div>
       )}
 
-      {/* ── Main ──────────────────────────────────────────────────────── */}
       <main style={{ padding: "40px 24px 80px" }}>
-
-        {/* Heading */}
-        <div style={{
-          maxWidth: 520, margin: "0 auto 44px",
-          textAlign: "center",
-        }}>
+        <div style={{ maxWidth: 520, margin: "0 auto 44px", textAlign: "center" }}>
           <h1 style={{
-            margin: 0, fontSize: "clamp(28px, 6vw, 42px)",
-            fontFamily: "Georgia, 'Times New Roman', serif",
-            fontWeight: 700, color: "#2a1505",
-            letterSpacing: "-0.02em",
+            margin: 0, fontSize: "clamp(28px,6vw,42px)",
+            fontFamily: "Georgia,'Times New Roman',serif",
+            fontWeight: 700, color: "#2a1505", letterSpacing: "-0.02em",
           }}>
             Библиотека
           </h1>
           {!isLoading && books && books.length > 0 && (
-            <p style={{
-              margin: "10px 0 0", fontSize: 15, color: "#9c856a",
-              fontFamily: "system-ui, sans-serif",
-            }}>
+            <p style={{ margin: "10px 0 0", fontSize: 15, color: "#9c856a", fontFamily: "system-ui,sans-serif" }}>
               {books.length === 1 ? "1 книга" : `${books.length} книги`}
             </p>
           )}
         </div>
 
-        {/* ── Books list ── */}
         {isLoading ? (
-          <div style={{
-            display: "flex", flexDirection: "column", gap: 56,
-          }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 56 }}>
             {[1, 2].map(i => (
-              <div key={i} style={{ width: "min(520px, 100%)", margin: "0 auto" }}>
+              <div key={i} style={{ width: "min(520px,100%)", margin: "0 auto" }}>
                 <div style={{
-                  aspectRatio: "2/3", maxHeight: "72vh",
-                  borderRadius: 16,
-                  background: "linear-gradient(135deg, #d8cfc0, #c8bfaf)",
+                  aspectRatio: "2/3", maxHeight: "72vh", borderRadius: 16,
+                  background: "linear-gradient(135deg,#d8cfc0,#c8bfaf)",
                   animation: "pulse 1.8s ease-in-out infinite",
                 }} />
                 <div style={{ marginTop: 20, height: 36, borderRadius: 8, background: "#d8cfc0", width: "60%", animation: "pulse 1.8s ease-in-out infinite" }} />
@@ -358,8 +337,6 @@ export default function Home() {
           <div style={{ display: "flex", flexDirection: "column", gap: 64 }}>
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             {books.map(book => <BookHeroCard key={book.id} book={book as any} />)}
-
-            {/* Add book card */}
             <AddBookHero />
           </div>
         ) : (
@@ -367,9 +344,7 @@ export default function Home() {
         )}
       </main>
 
-      <style>{`
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
-      `}</style>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}`}</style>
     </div>
   );
 }
@@ -378,17 +353,15 @@ export default function Home() {
 
 function AddBookHero({ empty }: { empty?: boolean }) {
   const [hovered, setHovered] = useState(false);
-
   return (
     <Link href="/upload" style={{ display: "block", textDecoration: "none" }}>
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        style={{ width: "min(520px, 100%)", margin: "0 auto", cursor: "pointer" }}
+        style={{ width: "min(520px,100%)", margin: "0 auto", cursor: "pointer" }}
       >
         <div style={{
-          aspectRatio: "2/3",
-          maxHeight: empty ? "55vh" : "35vh",
+          aspectRatio: "2/3", maxHeight: empty ? "55vh" : "35vh",
           borderRadius: 16,
           border: `2px dashed ${hovered ? "#a07040" : "#c4b09a"}`,
           background: hovered ? "rgba(124,79,30,0.06)" : "rgba(139,90,43,0.03)",
@@ -402,25 +375,18 @@ function AddBookHero({ empty }: { empty?: boolean }) {
             width: 52, height: 52, borderRadius: "50%",
             background: hovered ? "rgba(124,79,30,0.15)" : "rgba(139,90,43,0.08)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "background 0.2s",
           }}>
             <Plus size={22} color={hovered ? "#7c4f1e" : "#a07848"} />
           </div>
           <div style={{ textAlign: "center" }}>
             <p style={{
               margin: 0, fontSize: 15, fontWeight: 600,
-              color: hovered ? "#7c4f1e" : "#a07848",
-              fontFamily: "Georgia, serif",
-              transition: "color 0.2s",
+              color: hovered ? "#7c4f1e" : "#a07848", fontFamily: "Georgia,serif",
             }}>
               {empty ? "Добавьте первую книгу" : "Добавить книгу"}
             </p>
             {empty && (
-              <p style={{
-                margin: "6px 0 0", fontSize: 13,
-                color: hovered ? "#9c6030" : "#b8976a",
-                fontFamily: "system-ui, sans-serif",
-              }}>
+              <p style={{ margin: "6px 0 0", fontSize: 13, color: hovered ? "#9c6030" : "#b8976a", fontFamily: "system-ui,sans-serif" }}>
                 Загрузите .txt или .epub файл
               </p>
             )}

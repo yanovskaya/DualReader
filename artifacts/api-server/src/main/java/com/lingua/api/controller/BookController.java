@@ -73,7 +73,14 @@ public class BookController {
     @PostMapping("/books/{id}/generate-cover")
     public ResponseEntity<?> generateCover(@PathVariable Integer id) {
         return bookService.getBook(id).map(book -> {
-            coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor());
+            // Fetch real paragraphs so the AI can write an accurate description
+            List<String> paragraphTexts = paragraphRepo
+                    .findByBookIdOrderByPosition(book.getId(),
+                            org.springframework.data.domain.PageRequest.of(0, 20))
+                    .stream()
+                    .map(p -> p.getOriginalText())
+                    .toList();
+            coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor(), paragraphTexts);
             return ResponseEntity.accepted().body(Map.of("status", "generating"));
         }).orElse(ResponseEntity.notFound().build());
     }
