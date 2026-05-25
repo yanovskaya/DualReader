@@ -91,7 +91,7 @@ public class DictionaryService {
                 - "word": if the queried word is PART of a common phrasal verb (e.g. "put" in "put up with"), return the FULL phrasal verb. Otherwise return the word as-is.
                 - "translations": 1–3 Russian translations, context-appropriate first.
                 - "synonyms": for EACH translation, the single closest English synonym that best captures that specific meaning. Must be the same length as "translations". Use a word different from "word" itself.
-                - "transcription": American English IPA in slashes, e.g. /wɔːtər/. For phrasal verbs omit it.
+                - "transcription": American English IPA transcription in slashes. Use ONLY genuine IPA symbols: ə æ ɪ ʊ ɔ ʌ ɑ ɛ eɪ aɪ aʊ ɔɪ oʊ iː uː ɑː ɜːr ð θ ʃ ʒ ŋ tʃ dʒ ˈ ˌ etc. Examples: /wɔːtər/, /əˈweɪ/, /ˈhæpɪ/, /ˈsɪmpəl/. NEVER use simplified ASCII notation like /a'hwail/, /hw/, /'/, use only real IPA. For phrasal verbs omit transcription.
                 - "examples": 2 short natural English sentences using the word/phrasal verb.
                 - "exampleTranslations": Russian translation of EACH example — same count, same order as "examples".
                 - NEVER translate a wrong word.""";
