@@ -27,6 +27,7 @@ export interface Book {
   translatedParagraphs: number;
   translationStatus: BookTranslationStatus;
   createdAt: string;
+  description?: string | null;
 }
 
 export interface CreateBookBody {

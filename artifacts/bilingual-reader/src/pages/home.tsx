@@ -167,41 +167,53 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
         </div>
 
         {/* ── Below cover ── */}
-        <div style={{
-          marginTop: 20,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 4px",
-        }}>
-          <div>
-            {/* Progress bar */}
-            {(book as Book).translationStatus !== "completed" && (book.totalParagraphs ?? 0) > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <div style={{ width: 80, height: 3, background: "rgba(0,0,0,0.12)", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${progress}%`, height: "100%", background: "#f59e0b" }} />
-                </div>
-                <span style={{ fontSize: 11, color: "#9c856a", fontFamily: "system-ui, sans-serif" }}>
-                  {progress}%
-                </span>
-              </div>
-            )}
-            {(book as Book).translationStatus === "completed" && (
-              <span style={{ fontSize: 11, color: "#10b981", fontFamily: "system-ui, sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
-                <Clock size={11} /> Готово к чтению
-              </span>
-            )}
-          </div>
+        <div style={{ marginTop: 20, padding: "0 4px" }}>
 
-          {/* Read CTA */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: hovered ? "#7c4f1e" : "rgba(124,79,30,0.12)",
-            color: hovered ? "#fff" : "#7c4f1e",
-            padding: "8px 16px", borderRadius: 30,
-            fontSize: 13, fontWeight: 600,
-            fontFamily: "system-ui, sans-serif",
-            transition: "background 0.2s, color 0.2s",
-          }}>
-            Читать <ArrowRight size={14} />
+          {/* Description */}
+          {(book as Book).description && (
+            <p style={{
+              margin: "0 0 14px",
+              fontSize: 14, lineHeight: 1.6,
+              color: "#5c4a30",
+              fontFamily: "Georgia, serif",
+              fontStyle: "italic",
+            }}>
+              {(book as Book).description}
+            </p>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              {/* Progress bar */}
+              {(book as Book).translationStatus !== "completed" && (book.totalParagraphs ?? 0) > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 80, height: 3, background: "rgba(0,0,0,0.12)", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ width: `${progress}%`, height: "100%", background: "#f59e0b" }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: "#9c856a", fontFamily: "system-ui, sans-serif" }}>
+                    {progress}%
+                  </span>
+                </div>
+              )}
+              {(book as Book).translationStatus === "completed" && (
+                <span style={{ fontSize: 11, color: "#10b981", fontFamily: "system-ui, sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
+                  <Clock size={11} /> Готово к чтению
+                </span>
+              )}
+            </div>
+
+            {/* Read CTA */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: hovered ? "#7c4f1e" : "rgba(124,79,30,0.12)",
+              color: hovered ? "#fff" : "#7c4f1e",
+              padding: "8px 16px", borderRadius: 30,
+              fontSize: 13, fontWeight: 600,
+              fontFamily: "system-ui, sans-serif",
+              transition: "background 0.2s, color 0.2s",
+            }}>
+              Читать <ArrowRight size={14} />
+            </div>
           </div>
         </div>
       </article>

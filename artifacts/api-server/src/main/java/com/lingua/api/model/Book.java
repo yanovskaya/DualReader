@@ -53,4 +53,7 @@ public class Book {
 
     @Column(name = "cover_image")
     private byte[] coverImage;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
 }

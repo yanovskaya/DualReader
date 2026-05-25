@@ -27,6 +27,7 @@ export const ListBooksResponseItem = zod.object({
   translatedParagraphs: zod.number(),
   translationStatus: zod.enum(["pending", "in_progress", "completed"]),
   createdAt: zod.coerce.date(),
+  description: zod.string().nullish(),
 });
 export const ListBooksResponse = zod.array(ListBooksResponseItem);
 
@@ -58,6 +59,7 @@ export const GetBookResponse = zod.object({
   translatedParagraphs: zod.number(),
   translationStatus: zod.enum(["pending", "in_progress", "completed"]),
   createdAt: zod.coerce.date(),
+  description: zod.string().nullish(),
 });
 
 /**

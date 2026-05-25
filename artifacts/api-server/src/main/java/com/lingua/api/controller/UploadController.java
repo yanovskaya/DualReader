@@ -61,8 +61,10 @@ public class UploadController {
             String author = customAuthor != null && !customAuthor.isBlank() ? customAuthor.trim() : null;
             Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs);
 
-            // Generate cover art asynchronously — doesn't block the response
-            coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor());
+            // Generate description + cover art asynchronously — doesn't block the response
+            // Pass first 20 paragraphs so AI can read the actual content
+            List<String> excerpt = paragraphs.subList(0, Math.min(20, paragraphs.size()));
+            coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor(), excerpt);
 
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", book.getId());

@@ -228,6 +228,7 @@ public class BookController {
         m.put("translatedParagraphs", b.getTranslatedParagraphs());
         m.put("translationStatus", b.getTranslationStatus());
         m.put("createdAt", b.getCreatedAt().toString());
+        m.put("description", b.getDescription());
         return m;
     }
 }

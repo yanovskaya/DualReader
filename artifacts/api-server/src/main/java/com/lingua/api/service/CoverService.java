@@ -1,33 +1,35 @@
 package com.lingua.api.service;
 
 import com.lingua.api.repository.BookRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Generates book cover art.
- *
- * Strategy:
- *  1. Try to call an AI image generation API (if credentials allow).
- *  2. If unavailable, fall back to a deterministic SVG cover generated from the
- *     book title hash — looks beautiful and needs no external service.
- */
 @Service
 @RequiredArgsConstructor
 public class CoverService {
 
     private static final Logger log = LoggerFactory.getLogger(CoverService.class);
     private static final ExecutorService executor = Executors.newFixedThreadPool(2);
+    private final ObjectMapper mapper = new ObjectMapper();
 
     private final BookRepository bookRepo;
+    private final OpenAiService openAiService;
 
-    // 12 rich, dark gradient palettes — consistent with the frontend component
+    // 12 rich, dark gradient palettes
     private static final String[][] PALETTES = {
         {"#1a1a2e", "#0f3460", "#e8d5b7", "#e8b86d"},
         {"#3d1a24", "#8b3a52", "#fde8d0", "#e8a87c"},
@@ -44,11 +46,65 @@ public class CoverService {
     };
 
     /**
-     * Returns a cover image (PNG bytes if AI-generated, SVG bytes otherwise)
-     * for the given book. Schedules async AI generation but always returns the
-     * SVG cover immediately (via the GET /books/:id/cover endpoint logic).
-     *
-     * For scheduled async generation, see {@link #scheduleGeneration}.
+     * Schedules async generation of description + SVG cover for a newly uploaded book.
+     * Receives the first few paragraphs so it can call AI without a separate DB read.
+     */
+    public void scheduleGeneration(Integer bookId, String title, String author, List<String> firstParagraphs) {
+        executor.submit(() -> {
+            try {
+                String excerpt = buildExcerpt(firstParagraphs, 1500);
+                String description = generateDescription(title, author, excerpt);
+                byte[] svgBytes = generateSvgCover(title, author);
+
+                bookRepo.findById(bookId).ifPresent(book -> {
+                    if (description != null && !description.isBlank()) {
+                        book.setDescription(description);
+                    }
+                    if (book.getCoverImage() == null || book.getCoverImage().length == 0) {
+                        book.setCoverImage(svgBytes);
+                    }
+                    bookRepo.save(book);
+                    log.info("Description + SVG cover saved for book {}", bookId);
+                });
+            } catch (Exception e) {
+                log.warn("Cover/description generation failed for book {}: {}", bookId, e.getMessage());
+            }
+        });
+    }
+
+    /** Backward-compatible overload for cases without paragraphs. */
+    public void scheduleGeneration(Integer bookId, String title, String author) {
+        scheduleGeneration(bookId, title, author, List.of());
+    }
+
+    /**
+     * Uses OpenAI chat to write a 1-2 sentence Russian description of the book.
+     */
+    private String generateDescription(String title, String author, String excerpt) {
+        try {
+            String userMsg = String.format(
+                "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
+                "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
+                "передающих суть и атмосферу. Только описание, без лишних слов.",
+                title,
+                author != null && !author.isBlank() ? " — " + author : "",
+                excerpt
+            );
+
+            return openAiService.complete("gpt-5-nano", 200,
+                List.of(
+                    Map.of("role", "system", "content", "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
+                    Map.of("role", "user", "content", userMsg)
+                )
+            ).strip();
+        } catch (Exception e) {
+            log.warn("Description generation failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Generates a beautiful SVG cover from the book title hash. Always succeeds.
      */
     public byte[] generateSvgCover(String title, String author) {
         String[] palette = PALETTES[Math.abs(hashStr(title)) % PALETTES.length];
@@ -57,12 +113,8 @@ public class CoverService {
         String text   = palette[2];
         String accent = palette[3];
 
-        String escapedTitle  = xmlEscape(title);
-        String escapedAuthor = author != null ? xmlEscape(author) : null;
-
-        // Wrap title into at most 2 lines of ~18 chars each
         String[] titleLines = wrapText(title, 18);
-        double titleY = escapedAuthor != null ? 310.0 : 330.0;
+        double titleY = author != null && !author.isBlank() ? 310.0 : 330.0;
 
         StringBuilder titleSvg = new StringBuilder();
         for (int i = 0; i < titleLines.length; i++) {
@@ -74,12 +126,12 @@ public class CoverService {
         }
 
         String authorSvg = "";
-        if (escapedAuthor != null) {
+        if (author != null && !author.isBlank()) {
             authorSvg = String.format(
                 "<text x=\"200\" y=\"%.0f\" text-anchor=\"middle\" " +
                 "font-family=\"Arial,sans-serif\" font-size=\"14\" fill=\"%s\" " +
                 "letter-spacing=\"2\">%s</text>",
-                titleY + titleLines.length * 34 + 16, accent, escapedAuthor.toUpperCase());
+                titleY + titleLines.length * 34 + 16, accent, xmlEscape(author.toUpperCase()));
         }
 
         String svg = String.format("""
@@ -94,14 +146,10 @@ public class CoverService {
                   <stop offset="1" stop-color="rgba(255,255,255,0)"/>
                 </linearGradient>
               </defs>
-              <!-- Background -->
               <rect width="400" height="600" fill="url(#bg)"/>
               <rect width="400" height="600" fill="url(#shine)"/>
-              <!-- Spine shadow -->
               <rect width="12" height="600" fill="rgba(0,0,0,0.35)"/>
-              <!-- Top rule -->
               <line x1="120" y1="150" x2="280" y2="150" stroke="%s" stroke-width="1" opacity="0.6"/>
-              <!-- Ornament -->
               <circle cx="200" cy="200" r="4" fill="%s" opacity="0.9"/>
               <circle cx="200" cy="200" r="16" stroke="%s" stroke-width="1" fill="none" opacity="0.7"/>
               <circle cx="200" cy="200" r="30" stroke="%s" stroke-width="0.6" fill="none" opacity="0.45" stroke-dasharray="4 4"/>
@@ -109,9 +157,7 @@ public class CoverService {
               <line x1="200" y1="232" x2="200" y2="240" stroke="%s" stroke-width="1" opacity="0.7"/>
               <line x1="168" y1="200" x2="160" y2="200" stroke="%s" stroke-width="1" opacity="0.7"/>
               <line x1="232" y1="200" x2="240" y2="200" stroke="%s" stroke-width="1" opacity="0.7"/>
-              <!-- Bottom rule -->
               <line x1="120" y1="250" x2="280" y2="250" stroke="%s" stroke-width="1" opacity="0.6"/>
-              <!-- Title & author -->
               %s
               %s
             </svg>""",
@@ -125,28 +171,16 @@ public class CoverService {
         return svg.getBytes(StandardCharsets.UTF_8);
     }
 
-    /**
-     * Schedules async cover generation. Currently generates SVG synchronously
-     * and stores it, as AI image generation is not available in this environment.
-     */
-    public void scheduleGeneration(Integer bookId, String title, String author) {
-        executor.submit(() -> {
-            try {
-                byte[] svgBytes = generateSvgCover(title, author);
-                bookRepo.findById(bookId).ifPresent(book -> {
-                    if (book.getCoverImage() == null || book.getCoverImage().length == 0) {
-                        book.setCoverImage(svgBytes);
-                        bookRepo.save(book);
-                        log.info("SVG cover generated for book {}", bookId);
-                    }
-                });
-            } catch (Exception e) {
-                log.warn("Cover generation failed for book {}: {}", bookId, e.getMessage());
-            }
-        });
-    }
-
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static String buildExcerpt(List<String> paragraphs, int maxChars) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : paragraphs) {
+            if (sb.length() + p.length() > maxChars) break;
+            sb.append(p).append("\n\n");
+        }
+        return sb.toString().strip();
+    }
 
     private static int hashStr(String s) {
         int h = 0;
@@ -176,7 +210,6 @@ public class CoverService {
             }
         }
         if (line2.length() == 0) return new String[]{line1.toString()};
-        // Truncate line2 if too long
         String l2 = line2.toString();
         if (l2.length() > maxLen) l2 = l2.substring(0, maxLen - 1) + "…";
         return new String[]{line1.toString(), l2};
