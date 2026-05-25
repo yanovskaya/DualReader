@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, Component, type ErrorInfo } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -17,6 +17,55 @@ const queryClient = new QueryClient({
   },
 });
 
+// ── Error Boundary ────────────────────────────────────────────────────────────
+interface EBState { hasError: boolean; }
+
+class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): EBState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[ErrorBoundary]", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", minHeight: "100dvh", gap: 16,
+          fontFamily: "system-ui, sans-serif", padding: 24, textAlign: "center",
+          background: "#FAF8F3", color: "#1a1a1a",
+        }}>
+          <div style={{ fontSize: 40 }}>📖</div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Что-то пошло не так</h1>
+          <p style={{ color: "#666", margin: 0, maxWidth: 320 }}>
+            Приложение столкнулось с ошибкой. Нажмите кнопку, чтобы обновить страницу.
+          </p>
+          <button
+            onClick={() => window.location.replace("/")}
+            style={{
+              marginTop: 8, padding: "12px 28px", borderRadius: 10,
+              background: "#7c1f2e", color: "#fff", border: "none",
+              fontSize: 15, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            Обновить
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ── Routes ────────────────────────────────────────────────────────────────────
 function Routes() {
   return (
     <Switch>
@@ -32,14 +81,16 @@ function Routes() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Routes />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Routes />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
