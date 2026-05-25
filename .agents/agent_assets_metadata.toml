@@ -6,6 +6,18 @@ uri = "file://artifacts/lingua-mobile/assets/images/icon.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "f4O9TM-Urw28v5sO-Yr1N"
+uri = "file://artifacts/bilingual-reader/public/covers/2.png"
+type = "image"
+title = "isolation book cover"
+
+[[generated]]
+id = "Cv6jDAXH6QQwlxGQfgtuB"
+uri = "file://artifacts/bilingual-reader/public/covers/3.png"
+type = "image"
+title = "clean book cover"
+
 [[outputs]]
 id = "mSpKMwy5kKOEoTXgHu0oW"
 uri = "file://artifacts/bilingual-reader/public/icon-512.png"

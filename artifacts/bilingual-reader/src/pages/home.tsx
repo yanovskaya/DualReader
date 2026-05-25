@@ -1,10 +1,202 @@
 import { useEffect, useState } from "react";
 import { useListBooks, getListBooksQueryKey } from "@workspace/api-client-react";
-import { BookCard } from "@/components/book-card";
 import { Link } from "wouter";
-import { Plus, WifiOff, BookOpen } from "lucide-react";
-import { saveBook, loadAllBooks } from "@/lib/idb";
+import { Plus, WifiOff, BookOpen, ArrowRight, Clock } from "lucide-react";
+import { saveBook, loadAllBooks, deleteBookCache } from "@/lib/idb";
+import { useDeleteBook } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { CachedBook } from "@/lib/idb";
+import type { Book } from "@workspace/api-client-react/src/generated/api.schemas";
+import { BookCoverArt } from "@/components/book-cover-art";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getStatusLabel(status?: string | null) {
+  if (status === "completed") return { text: "Переведено", color: "#10b981" };
+  if (status === "in_progress") return { text: "Переводится…", color: "#f59e0b" };
+  return { text: "Ожидает", color: "#9ca3af" };
+}
+
+// ── Book Hero Card ────────────────────────────────────────────────────────────
+
+function BookHeroCard({ book }: { book: Book | CachedBook }) {
+  const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  const status = getStatusLabel((book as Book).translationStatus);
+  const progress = (book.totalParagraphs ?? 0) > 0
+    ? Math.round(((book as Book).translatedParagraphs / book.totalParagraphs!) * 100)
+    : 0;
+
+  const coverSrc = `/covers/${book.id}.png`;
+
+  return (
+    <Link href={`/reader/${book.id}`} style={{ display: "block", textDecoration: "none" }}>
+      <article
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: "min(520px, 100%)",
+          margin: "0 auto",
+          cursor: "pointer",
+        }}
+      >
+        {/* ── Cover ── */}
+        <div style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "2/3",
+          maxHeight: "72vh",
+          overflow: "hidden",
+          borderRadius: 16,
+          background: "#1a1a2e",
+          transform: hovered ? "scale(1.012)" : "scale(1)",
+          transition: "transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.4s ease",
+          boxShadow: hovered
+            ? "0 32px 80px rgba(0,0,0,0.50), 0 8px 24px rgba(0,0,0,0.30)"
+            : "0 16px 48px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.18)",
+        }}>
+
+          {/* AI generated image — if available */}
+          {!imgError && (
+            <img
+              src={coverSrc}
+              alt={book.title}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setImgError(true)}
+              style={{
+                position: "absolute", inset: 0,
+                width: "100%", height: "100%",
+                objectFit: "cover",
+                opacity: imgLoaded ? 1 : 0,
+                transition: "opacity 0.5s ease",
+              }}
+            />
+          )}
+
+          {/* Gradient CSS cover — fallback or beneath image */}
+          <div style={{
+            position: "absolute", inset: 0,
+            opacity: imgLoaded && !imgError ? 0 : 1,
+            transition: "opacity 0.5s ease",
+          }}>
+            <BookCoverArt title={book.title} author={(book as Book).author} size="lg" />
+          </div>
+
+          {/* Bottom gradient overlay for text legibility */}
+          <div style={{
+            position: "absolute", left: 0, right: 0, bottom: 0,
+            height: "55%",
+            background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 45%, transparent 100%)",
+            pointerEvents: "none",
+          }} />
+
+          {/* Title + author on the cover */}
+          <div style={{
+            position: "absolute", left: 24, right: 24, bottom: 24,
+          }}>
+            <h2 style={{
+              margin: 0,
+              fontSize: "clamp(20px, 4vw, 28px)",
+              fontFamily: "Georgia, 'Times New Roman', serif",
+              fontWeight: 700,
+              color: "#fff",
+              lineHeight: 1.25,
+              textShadow: "0 2px 12px rgba(0,0,0,0.6)",
+              letterSpacing: "-0.01em",
+            }}>
+              {book.title}
+            </h2>
+            {(book as Book).author && (
+              <p style={{
+                margin: "6px 0 0",
+                fontSize: "clamp(12px, 2.5vw, 14px)",
+                fontFamily: "system-ui, sans-serif",
+                color: "rgba(255,255,255,0.72)",
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                textShadow: "0 1px 6px rgba(0,0,0,0.5)",
+              }}>
+                {(book as Book).author}
+              </p>
+            )}
+          </div>
+
+          {/* Status badge top-right */}
+          <div style={{
+            position: "absolute", top: 16, right: 16,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(8px)",
+            borderRadius: 20,
+            padding: "5px 10px",
+            display: "flex", alignItems: "center", gap: 5,
+          }}>
+            <div style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: status.color,
+              boxShadow: `0 0 6px ${status.color}`,
+            }} />
+            <span style={{
+              fontSize: 11, fontFamily: "system-ui, sans-serif",
+              color: "rgba(255,255,255,0.88)", fontWeight: 500,
+            }}>
+              {status.text}
+            </span>
+          </div>
+
+          {/* Spine shadow */}
+          <div style={{
+            position: "absolute", left: 0, top: 0, bottom: 0, width: 12,
+            background: "linear-gradient(to right, rgba(0,0,0,0.4), transparent)",
+            pointerEvents: "none",
+          }} />
+        </div>
+
+        {/* ── Below cover ── */}
+        <div style={{
+          marginTop: 20,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "0 4px",
+        }}>
+          <div>
+            {/* Progress bar */}
+            {(book as Book).translationStatus !== "completed" && (book.totalParagraphs ?? 0) > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div style={{ width: 80, height: 3, background: "rgba(0,0,0,0.12)", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${progress}%`, height: "100%", background: "#f59e0b" }} />
+                </div>
+                <span style={{ fontSize: 11, color: "#9c856a", fontFamily: "system-ui, sans-serif" }}>
+                  {progress}%
+                </span>
+              </div>
+            )}
+            {(book as Book).translationStatus === "completed" && (
+              <span style={{ fontSize: 11, color: "#10b981", fontFamily: "system-ui, sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
+                <Clock size={11} /> Готово к чтению
+              </span>
+            )}
+          </div>
+
+          {/* Read CTA */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: hovered ? "#7c4f1e" : "rgba(124,79,30,0.12)",
+            color: hovered ? "#fff" : "#7c4f1e",
+            padding: "8px 16px", borderRadius: 30,
+            fontSize: 13, fontWeight: 600,
+            fontFamily: "system-ui, sans-serif",
+            transition: "background 0.2s, color 0.2s",
+          }}>
+            Читать <ArrowRight size={14} />
+          </div>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+// ── Home Page ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const { data: booksOnline, isLoading: isLoadingOnline } = useListBooks({
@@ -22,9 +214,7 @@ export default function Home() {
     if (!booksOnline) return;
     for (const b of booksOnline) {
       saveBook({
-        id: b.id,
-        title: b.title,
-        author: b.author ?? null,
+        id: b.id, title: b.title, author: b.author ?? null,
         language: b.language ?? "en",
         totalParagraphs: b.totalParagraphs ?? 0,
         translatedParagraphs: b.translatedParagraphs ?? 0,
@@ -41,31 +231,28 @@ export default function Home() {
   return (
     <div style={{
       minHeight: "100dvh",
-      background: "#F5F0E8",
-      backgroundImage: `
-        radial-gradient(ellipse at 20% 0%, rgba(139,90,43,0.07) 0%, transparent 60%),
-        radial-gradient(ellipse at 80% 100%, rgba(90,60,20,0.05) 0%, transparent 60%)
-      `,
+      background: "#F4EFE6",
+      backgroundImage: "radial-gradient(ellipse at 50% 0%, rgba(139,90,43,0.08) 0%, transparent 70%)",
     }}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Sticky header ─────────────────────────────────────────────── */}
       <header style={{
         position: "sticky", top: 0, zIndex: 40,
-        background: "rgba(245,240,232,0.92)",
-        backdropFilter: "blur(12px)",
-        borderBottom: "1px solid rgba(139,90,43,0.12)",
-        padding: "0 24px",
+        background: "rgba(244,239,230,0.90)",
+        backdropFilter: "blur(16px)",
+        borderBottom: "1px solid rgba(139,90,43,0.10)",
       }}>
         <div style={{
-          maxWidth: 1100, margin: "0 auto",
-          height: 56, display: "flex", alignItems: "center", justifyContent: "space-between",
+          maxWidth: 640, margin: "0 auto",
+          height: 56, display: "flex",
+          alignItems: "center", justifyContent: "space-between",
+          padding: "0 24px",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <BookOpen size={20} color="#7c4f1e" strokeWidth={1.8} />
+            <BookOpen size={19} color="#7c4f1e" strokeWidth={1.8} />
             <span style={{
-              fontSize: 18, fontWeight: 700,
-              fontFamily: "Georgia, serif",
-              color: "#3d2008", letterSpacing: "0.01em",
+              fontSize: 17, fontWeight: 700,
+              fontFamily: "Georgia, serif", color: "#3d2008",
             }}>
               Lingua
             </span>
@@ -74,162 +261,146 @@ export default function Home() {
             <button style={{
               display: "flex", alignItems: "center", gap: 6,
               background: "#7c4f1e", color: "#fff",
-              border: "none", borderRadius: 10,
-              padding: "8px 16px", fontSize: 13, fontWeight: 600,
+              border: "none", borderRadius: 24,
+              padding: "8px 18px", fontSize: 13, fontWeight: 600,
               fontFamily: "system-ui, sans-serif",
               cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(124,79,30,0.30)",
+              boxShadow: "0 2px 10px rgba(124,79,30,0.28)",
             }}>
-              <Plus size={15} />
-              Добавить книгу
+              <Plus size={15} /> Книга
             </button>
           </Link>
         </div>
       </header>
 
-      {/* ── Content ────────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px 64px" }}>
+      {/* ── Offline notice ─────────────────────────────────────────────── */}
+      {isOffline && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+          padding: "8px 16px",
+          background: "rgba(139,90,43,0.10)",
+          fontSize: 12, color: "#7c4f1e",
+          fontFamily: "system-ui, sans-serif",
+        }}>
+          <WifiOff size={12} /> Офлайн — кешированные книги
+        </div>
+      )}
 
-        {/* Title */}
-        <div style={{ marginBottom: 36 }}>
+      {/* ── Main ──────────────────────────────────────────────────────── */}
+      <main style={{ padding: "40px 24px 80px" }}>
+
+        {/* Heading */}
+        <div style={{
+          maxWidth: 520, margin: "0 auto 44px",
+          textAlign: "center",
+        }}>
           <h1 style={{
-            margin: 0,
-            fontSize: 34, fontWeight: 700,
+            margin: 0, fontSize: "clamp(28px, 6vw, 42px)",
             fontFamily: "Georgia, 'Times New Roman', serif",
-            color: "#2a1505",
-            letterSpacing: "-0.01em",
+            fontWeight: 700, color: "#2a1505",
+            letterSpacing: "-0.02em",
           }}>
             Библиотека
           </h1>
-          {isOffline && (
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              marginTop: 10, padding: "5px 12px",
-              background: "rgba(139,90,43,0.1)",
-              borderRadius: 20, fontSize: 12, color: "#7c4f1e",
+          {!isLoading && books && books.length > 0 && (
+            <p style={{
+              margin: "10px 0 0", fontSize: 15, color: "#9c856a",
               fontFamily: "system-ui, sans-serif",
             }}>
-              <WifiOff size={12} />
-              Офлайн — показаны кешированные книги
-            </div>
+              {books.length === 1 ? "1 книга" : `${books.length} книги`}
+            </p>
           )}
         </div>
 
-        {/* ── Shelf ──────────────────────────────────────────────────────── */}
+        {/* ── Books list ── */}
         {isLoading ? (
-          // Skeleton
-          <div style={gridStyle}>
-            {[1, 2, 3, 4].map(i => (
-              <div key={i}>
+          <div style={{
+            display: "flex", flexDirection: "column", gap: 56,
+          }}>
+            {[1, 2].map(i => (
+              <div key={i} style={{ width: "min(520px, 100%)", margin: "0 auto" }}>
                 <div style={{
-                  aspectRatio: "2/3", borderRadius: 6,
+                  aspectRatio: "2/3", maxHeight: "72vh",
+                  borderRadius: 16,
                   background: "linear-gradient(135deg, #d8cfc0, #c8bfaf)",
                   animation: "pulse 1.8s ease-in-out infinite",
                 }} />
-                <div style={{ marginTop: 10, height: 13, borderRadius: 4, background: "#d8cfc0", width: "80%", animation: "pulse 1.8s ease-in-out infinite" }} />
-                <div style={{ marginTop: 5, height: 11, borderRadius: 4, background: "#e0d8cc", width: "55%", animation: "pulse 1.8s ease-in-out infinite" }} />
+                <div style={{ marginTop: 20, height: 36, borderRadius: 8, background: "#d8cfc0", width: "60%", animation: "pulse 1.8s ease-in-out infinite" }} />
               </div>
             ))}
           </div>
         ) : books && books.length > 0 ? (
-          <div style={gridStyle}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 64 }}>
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {books.map(book => <BookCard key={book.id} book={book as any} />)}
+            {books.map(book => <BookHeroCard key={book.id} book={book as any} />)}
 
             {/* Add book card */}
-            <AddBookCard />
+            <AddBookHero />
           </div>
         ) : (
-          // Empty state
-          <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            justifyContent: "center", padding: "80px 24px",
-            textAlign: "center",
-          }}>
-            <div style={gridStyle}>
-              <AddBookCard large />
-            </div>
-            <p style={{
-              marginTop: 28, fontSize: 15, color: "#9c856a",
-              fontFamily: "system-ui, sans-serif", maxWidth: 320,
-            }}>
-              Загрузите книгу на английском — читайте с параллельным переводом на русский.
-            </p>
-          </div>
+          <AddBookHero empty />
         )}
       </main>
 
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.55; }
-        }
-        @media (max-width: 500px) {
-          .shelf-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 20px 14px !important; }
-        }
-        @media (min-width: 501px) and (max-width: 760px) {
-          .shelf-grid { grid-template-columns: repeat(3, 1fr) !important; }
-        }
-        @media (min-width: 761px) and (max-width: 1000px) {
-          .shelf-grid { grid-template-columns: repeat(4, 1fr) !important; }
-        }
-        @media (min-width: 1001px) {
-          .shelf-grid { grid-template-columns: repeat(5, 1fr) !important; }
-        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
       `}</style>
     </div>
   );
 }
 
-// ── Shared grid style ─────────────────────────────────────────────────────────
+// ── Add Book Hero ─────────────────────────────────────────────────────────────
 
-const gridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(5, 1fr)",
-  gap: "32px 24px",
-};
-
-// ── Add Book card ─────────────────────────────────────────────────────────────
-
-function AddBookCard({ large }: { large?: boolean }) {
+function AddBookHero({ empty }: { empty?: boolean }) {
   const [hovered, setHovered] = useState(false);
 
   return (
-    <Link href="/upload" style={{ textDecoration: "none" }}>
+    <Link href="/upload" style={{ display: "block", textDecoration: "none" }}>
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        style={{ maxWidth: large ? 160 : undefined }}
+        style={{ width: "min(520px, 100%)", margin: "0 auto", cursor: "pointer" }}
       >
         <div style={{
           aspectRatio: "2/3",
-          borderRadius: 6,
-          border: `2px dashed ${hovered ? "#a07040" : "#c8b89a"}`,
+          maxHeight: empty ? "55vh" : "35vh",
+          borderRadius: 16,
+          border: `2px dashed ${hovered ? "#a07040" : "#c4b09a"}`,
           background: hovered ? "rgba(124,79,30,0.06)" : "rgba(139,90,43,0.03)",
           display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center", gap: 10,
-          cursor: "pointer",
-          transform: hovered ? "translateY(-4px)" : "translateY(0)",
-          transition: "all 0.2s ease",
-          boxShadow: hovered ? "3px 8px 24px rgba(0,0,0,0.12)" : "none",
+          alignItems: "center", justifyContent: "center", gap: 14,
+          transform: hovered ? "scale(1.008)" : "scale(1)",
+          transition: "all 0.25s ease",
+          boxShadow: hovered ? "0 12px 40px rgba(0,0,0,0.10)" : "none",
         }}>
           <div style={{
-            width: 36, height: 36, borderRadius: "50%",
+            width: 52, height: 52, borderRadius: "50%",
             background: hovered ? "rgba(124,79,30,0.15)" : "rgba(139,90,43,0.08)",
             display: "flex", alignItems: "center", justifyContent: "center",
             transition: "background 0.2s",
           }}>
-            <Plus size={18} color={hovered ? "#7c4f1e" : "#a07848"} />
+            <Plus size={22} color={hovered ? "#7c4f1e" : "#a07848"} />
           </div>
-          <span style={{
-            fontSize: 11, fontFamily: "system-ui, sans-serif",
-            color: hovered ? "#7c4f1e" : "#a07848",
-            fontWeight: 600, letterSpacing: "0.04em",
-          }}>
-            ДОБАВИТЬ
-          </span>
+          <div style={{ textAlign: "center" }}>
+            <p style={{
+              margin: 0, fontSize: 15, fontWeight: 600,
+              color: hovered ? "#7c4f1e" : "#a07848",
+              fontFamily: "Georgia, serif",
+              transition: "color 0.2s",
+            }}>
+              {empty ? "Добавьте первую книгу" : "Добавить книгу"}
+            </p>
+            {empty && (
+              <p style={{
+                margin: "6px 0 0", fontSize: 13,
+                color: hovered ? "#9c6030" : "#b8976a",
+                fontFamily: "system-ui, sans-serif",
+              }}>
+                Загрузите .txt или .epub файл
+              </p>
+            )}
+          </div>
         </div>
-        <div style={{ height: 13 + 5 + 11, marginTop: 10 }} />
       </div>
     </Link>
   );
