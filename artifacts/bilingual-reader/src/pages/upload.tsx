@@ -91,13 +91,27 @@ export default function UploadPage() {
       toast({ title: "Книга загружена", description: "Перевод запущен. Дождитесь завершения — книга будет доступна офлайн." });
       setLocation(`/processing/${book.id}`);
     } catch (err) {
-      toast({
-        title: "Upload failed",
-        description: err instanceof Error ? err.message : "Something went wrong.",
-        variant: "destructive",
-      });
-      setIsUploading(false);
-      setUploadStatus("");
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
+      // "Load failed" (Safari) / "Failed to fetch" (Chrome) means the network
+      // request was interrupted by the Service Worker taking over — but the
+      // server likely processed the upload already. Send the user to the
+      // library so they can see their book.
+      const isSwInterrupt = msg === "Load failed" || msg === "Failed to fetch";
+      if (isSwInterrupt) {
+        toast({
+          title: "Возможно, книга уже загружена",
+          description: "Соединение прервалось, но книга могла сохраниться. Проверьте библиотеку.",
+        });
+        setLocation("/");
+      } else {
+        toast({
+          title: "Upload failed",
+          description: msg,
+          variant: "destructive",
+        });
+        setIsUploading(false);
+        setUploadStatus("");
+      }
     }
   };
 
