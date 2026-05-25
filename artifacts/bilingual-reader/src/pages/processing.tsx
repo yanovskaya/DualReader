@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
-import { BookOpen, CheckCircle2, WifiOff } from "lucide-react";
+import { BookOpen, CheckCircle2, WifiOff, ArrowLeft } from "lucide-react";
 import { useGetTranslationStatus, useGetBook } from "@workspace/api-client-react";
 import { saveParagraphPage, saveBook, CachedParagraphsPage } from "@/lib/idb";
 
@@ -129,7 +129,25 @@ export default function ProcessingPage() {
       justifyContent: "center",
       padding: "32px 20px",
       fontFamily: "'Georgia', serif",
+      position: "relative",
     }}>
+
+      {/* Back to library button */}
+      <button
+        onClick={() => navigate("/")}
+        style={{
+          position: "absolute", top: 16, left: 16,
+          display: "flex", alignItems: "center", gap: 6,
+          background: "transparent", border: "none",
+          color: "#9ca3af", fontSize: 13,
+          fontFamily: "system-ui, sans-serif",
+          cursor: "pointer", padding: "8px 4px",
+          borderRadius: 8,
+        }}
+      >
+        <ArrowLeft size={15} />
+        В библиотеку
+      </button>
 
       {/* Book icon / check */}
       <div style={{ marginBottom: 8, color: phase === "ready" ? "#059669" : "#6b7280" }}>
@@ -249,8 +267,8 @@ export default function ProcessingPage() {
           fontSize: 12, color: "#9ca3af", textAlign: "center",
           maxWidth: 280, fontFamily: "system-ui, sans-serif",
         }}>
-          Перевод займёт несколько минут.<br />
-          Не закрывайте страницу — потом книга будет доступна офлайн.
+          Перевод займёт несколько минут и продолжится в фоне.<br />
+          Можно вернуться в библиотеку — книга появится когда будет готова.
         </p>
       )}
 
