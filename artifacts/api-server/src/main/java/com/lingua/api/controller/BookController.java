@@ -4,8 +4,10 @@ import com.lingua.api.model.Book;
 import com.lingua.api.model.Paragraph;
 import com.lingua.api.repository.ParagraphRepository;
 import com.lingua.api.service.BookService;
+import com.lingua.api.service.CoverService;
 import com.lingua.api.service.TranslationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -19,6 +21,7 @@ public class BookController {
     private final BookService bookService;
     private final TranslationService translationService;
     private final ParagraphRepository paragraphRepo;
+    private final CoverService coverService;
 
     // ── GET /books ─────────────────────────────────────────────────────────
     @GetMapping("/books")
@@ -43,6 +46,36 @@ public class BookController {
 
         Book book = bookService.createBook(title, author, language, content);
         return ResponseEntity.status(201).body(bookToMap(book));
+    }
+
+    // ── GET /books/:id/cover ───────────────────────────────────────────────
+    @GetMapping("/books/{id}/cover")
+    public ResponseEntity<byte[]> getCover(@PathVariable Integer id) {
+        return bookService.getBook(id).map(book -> {
+            byte[] img = book.getCoverImage();
+            if (img == null || img.length == 0) {
+                // Generate SVG on-the-fly as fallback — always returns something beautiful
+                byte[] svg = coverService.generateSvgCover(book.getTitle(), book.getAuthor());
+                return ResponseEntity.ok()
+                        .contentType(MediaType.valueOf("image/svg+xml"))
+                        .body(svg);
+            }
+            // Detect PNG vs SVG by magic bytes
+            boolean isPng = img.length >= 4 &&
+                    img[0] == (byte)0x89 && img[1] == (byte)0x50 &&
+                    img[2] == (byte)0x4E && img[3] == (byte)0x47;
+            MediaType mt = isPng ? MediaType.IMAGE_PNG : MediaType.valueOf("image/svg+xml");
+            return ResponseEntity.ok().contentType(mt).body(img);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // ── POST /books/:id/generate-cover ────────────────────────────────────
+    @PostMapping("/books/{id}/generate-cover")
+    public ResponseEntity<?> generateCover(@PathVariable Integer id) {
+        return bookService.getBook(id).map(book -> {
+            coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor());
+            return ResponseEntity.accepted().body(Map.of("status", "generating"));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     // ── GET /books/:id ─────────────────────────────────────────────────────

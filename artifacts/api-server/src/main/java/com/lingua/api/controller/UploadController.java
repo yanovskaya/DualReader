@@ -2,6 +2,7 @@ package com.lingua.api.controller;
 
 import com.lingua.api.model.Book;
 import com.lingua.api.service.BookService;
+import com.lingua.api.service.CoverService;
 import com.lingua.api.service.EpubParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import java.util.Map;
 public class UploadController {
 
     private final BookService bookService;
+    private final CoverService coverService;
     private final EpubParser epubParser;
 
     // POST /books/upload
@@ -58,6 +60,9 @@ public class UploadController {
 
             String author = customAuthor != null && !customAuthor.isBlank() ? customAuthor.trim() : null;
             Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs);
+
+            // Generate cover art asynchronously — doesn't block the response
+            coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor());
 
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", book.getId());

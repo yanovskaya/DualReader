@@ -23,13 +23,17 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [hovered, setHovered] = useState(false);
+  // Try static pre-generated PNG first; fall back to API (always returns SVG/PNG)
+  const [useFallback, setUseFallback] = useState(false);
 
   const status = getStatusLabel((book as Book).translationStatus);
   const progress = (book.totalParagraphs ?? 0) > 0
     ? Math.round(((book as Book).translatedParagraphs / book.totalParagraphs!) * 100)
     : 0;
 
-  const coverSrc = `/covers/${book.id}.png`;
+  const coverSrc = useFallback
+    ? `/api/books/${book.id}/cover`
+    : `/covers/${book.id}.png`;
 
   return (
     <Link href={`/reader/${book.id}`} style={{ display: "block", textDecoration: "none" }}>
@@ -58,13 +62,22 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
             : "0 16px 48px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.18)",
         }}>
 
-          {/* AI generated image — if available */}
+          {/* Cover image: static PNG first, then API fallback (SVG/PNG from DB) */}
           {!imgError && (
             <img
               src={coverSrc}
               alt={book.title}
               onLoad={() => setImgLoaded(true)}
-              onError={() => setImgError(true)}
+              onError={() => {
+                if (!useFallback) {
+                  // Static PNG not found — switch to API endpoint
+                  setUseFallback(true);
+                  setImgLoaded(false);
+                } else {
+                  // API also failed — show gradient CSS cover
+                  setImgError(true);
+                }
+              }}
               style={{
                 position: "absolute", inset: 0,
                 width: "100%", height: "100%",

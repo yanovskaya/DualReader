@@ -15,5 +15,6 @@ com/lingua/api/service/DictionaryService.class
 com/lingua/api/service/TranslationService.class
 com/lingua/api/repository/BookRepository.class
 com/lingua/api/controller/UploadController.class
+com/lingua/api/service/CoverService.class
 com/lingua/api/service/BookService.class
 com/lingua/api/LinguaApiApplication.class

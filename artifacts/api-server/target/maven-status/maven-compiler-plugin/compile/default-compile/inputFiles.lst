@@ -3,6 +3,7 @@
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/repository/BookRepository.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/DictionaryService.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/EpubParser.java
+/home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/CoverService.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/config/CorsConfig.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/controller/UploadController.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/config/AsyncConfig.java

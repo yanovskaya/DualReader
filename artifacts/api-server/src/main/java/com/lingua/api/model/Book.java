@@ -50,4 +50,7 @@ public class Book {
 
     @Column(name = "ru_offset")
     private Double ruOffset;
+
+    @Column(name = "cover_image")
+    private byte[] coverImage;
 }
