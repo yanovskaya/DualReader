@@ -361,56 +361,37 @@ function AddBookHero({ empty }: { empty?: boolean }) {
         style={{ width: "min(520px,100%)", margin: "0 auto", cursor: "pointer" }}
       >
         <div style={{
-          position: "relative",
           width: "100%",
           aspectRatio: "2/3",
           maxHeight: empty ? "72vh" : "44vh",
-          overflow: "hidden",
           borderRadius: 16,
-          background: hovered
-            ? "linear-gradient(145deg,#e8ddd0,#d4c8b8)"
-            : "linear-gradient(145deg,#ece5da,#ddd4c6)",
+          border: `2px dashed ${hovered ? "#a07040" : "#c4b09a"}`,
+          background: hovered ? "rgba(124,79,30,0.05)" : "transparent",
           display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center", gap: 18,
-          transform: hovered ? "scale(1.012)" : "scale(1)",
-          transition: "transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94), box-shadow 0.4s ease, background 0.3s ease",
-          boxShadow: hovered
-            ? "0 32px 80px rgba(0,0,0,0.22), 0 8px 24px rgba(0,0,0,0.12)"
-            : "0 16px 48px rgba(0,0,0,0.14), 0 4px 12px rgba(0,0,0,0.08)",
+          alignItems: "center", justifyContent: "center", gap: 14,
+          transition: "border-color 0.25s ease, background 0.25s ease",
         }}>
-          {/* Subtle texture lines */}
           <div style={{
-            position: "absolute", inset: 0, opacity: 0.04,
-            backgroundImage: "repeating-linear-gradient(0deg,#5a3a1a 0px,#5a3a1a 1px,transparent 1px,transparent 28px)",
-            pointerEvents: "none",
-          }} />
-
-          <div style={{
-            width: 60, height: 60, borderRadius: "50%",
-            background: hovered ? "rgba(124,79,30,0.16)" : "rgba(124,79,30,0.09)",
+            width: 52, height: 52, borderRadius: "50%",
+            background: hovered ? "rgba(124,79,30,0.12)" : "rgba(139,90,43,0.07)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "background 0.3s ease",
+            transition: "background 0.25s ease",
           }}>
-            <Plus size={26} color={hovered ? "#7c4f1e" : "#a07848"} strokeWidth={1.8} />
+            <Plus size={22} color={hovered ? "#7c4f1e" : "#a07848"} />
           </div>
-
-          <div style={{ textAlign: "center", padding: "0 24px" }}>
+          <div style={{ textAlign: "center" }}>
             <p style={{
-              margin: 0, fontSize: 17, fontWeight: 700,
-              color: hovered ? "#5a3010" : "#7c5030",
-              fontFamily: "Georgia,'Times New Roman',serif",
-              letterSpacing: "-0.01em",
+              margin: 0, fontSize: 15, fontWeight: 600,
+              color: hovered ? "#7c4f1e" : "#a07848",
+              fontFamily: "Georgia,serif",
             }}>
               {empty ? "Добавьте первую книгу" : "Добавить книгу"}
             </p>
-            <p style={{
-              margin: "8px 0 0", fontSize: 13,
-              color: hovered ? "#8c6040" : "#a08060",
-              fontFamily: "system-ui,sans-serif",
-              lineHeight: 1.5,
-            }}>
-              {empty ? "Загрузите .txt или .epub файл" : ".txt или .epub"}
-            </p>
+            {empty && (
+              <p style={{ margin: "6px 0 0", fontSize: 13, color: hovered ? "#9c6030" : "#b8976a", fontFamily: "system-ui,sans-serif" }}>
+                Загрузите .txt или .epub файл
+              </p>
+            )}
           </div>
         </div>
       </article>
