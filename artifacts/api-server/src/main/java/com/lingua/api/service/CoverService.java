@@ -161,32 +161,65 @@ public class CoverService {
      */
     private String generateDescription(String title, String author, String excerpt) {
         try {
-            if (excerpt == null || excerpt.isBlank()) {
-                log.warn("Empty excerpt for '{}', skipping description", title);
-                return null;
-            }
-            log.info("Generating description for '{}' (excerpt {} chars)", title, excerpt.length());
-            String userMsg = String.format(
-                "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
-                "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
-                "передающих суть и атмосферу. Только описание, без лишних слов.",
-                title,
-                author != null && !author.isBlank() ? " — " + author : "",
-                excerpt
-            );
+            log.info("Generating description for '{}' (excerpt {} chars)",
+                    title, excerpt == null ? 0 : excerpt.length());
 
-            String result = openAiService.complete("gpt-5-nano", 200,
+            // First try: use actual excerpt (may be blocked by content moderation)
+            String result = null;
+            if (excerpt != null && !excerpt.isBlank()) {
+                result = tryGenerateDescription(title, author, excerpt);
+            }
+
+            // Fallback: title-only prompt — no character names, no raw content
+            if (result == null || result.isBlank()) {
+                log.info("Trying title-only description for '{}'", title);
+                result = tryGenerateDescription(title, author, null);
+            }
+
+            log.info("Description result for '{}': {} chars, blank={}", title,
+                    result == null ? -1 : result.length(), result == null || result.isBlank());
+            return result == null ? null : result.strip();
+        } catch (Exception e) {
+            log.warn("Description generation failed for '{}': {}", title, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Single attempt at generating a description.
+     * If excerpt is null, generates purely from the title (safe — no character names).
+     */
+    private String tryGenerateDescription(String title, String author, String excerpt) {
+        try {
+            String userMsg;
+            if (excerpt != null && !excerpt.isBlank()) {
+                userMsg = String.format(
+                    "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
+                    "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
+                    "передающих суть и атмосферу. Только описание, без лишних слов.",
+                    title,
+                    author != null && !author.isBlank() ? " — " + author : "",
+                    excerpt
+                );
+            } else {
+                userMsg = String.format(
+                    "Напиши краткое атмосферное описание романа с названием \"%s\"%s " +
+                    "на русском языке — 1-2 предложения, передающих жанр и настроение. " +
+                    "Это роман о любви, напряжении и эмоциях. Только описание, без лишних слов.",
+                    title,
+                    author != null && !author.isBlank() ? " — " + author : ""
+                );
+            }
+            String result = openAiService.complete("gpt-5-nano", 250,
                 List.of(
                     Map.of("role", "system", "content",
                         "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
                     Map.of("role", "user", "content", userMsg)
                 )
             );
-            log.info("Description result for '{}': {} chars, blank={}", title,
-                    result == null ? -1 : result.length(), result == null || result.isBlank());
-            return result == null ? null : result.strip();
+            return result == null || result.isBlank() ? null : result.strip();
         } catch (Exception e) {
-            log.warn("Description generation failed for '{}': {}", title, e.getMessage());
+            log.warn("tryGenerateDescription failed for '{}': {}", title, e.getMessage());
             return null;
         }
     }
@@ -210,37 +243,28 @@ public class CoverService {
         }
     }
 
-    /** Builds a rich illustration prompt for gpt-image-1. */
+    /** Builds a safe illustration prompt for gpt-image-1.
+     *  Never includes raw excerpt text — only abstract description or title-based scene. */
     private String buildCoverPrompt(String title, String author, String description, String excerpt) {
-        // Build a clean scene context: prefer short description, fall back to brief excerpt
-        String scene = null;
-        if (description != null && !description.isBlank()) {
-            // Use Russian description — gpt-image-1 handles it well
-            scene = description.strip();
-        } else if (excerpt != null && !excerpt.isBlank()) {
-            // Use only first 250 chars of clean prose to avoid noisy content
-            String clean = excerpt.strip();
-            scene = clean.length() > 250 ? clean.substring(0, 250).strip() + "…" : clean;
-        }
-
         String style =
             "Style: professional digital painting, book cover illustration art, " +
             "vibrant rich colors, sharp crisp detail, clean composition, " +
             "soft luminous lighting, painterly brushwork with clean edges, " +
-            "highly detailed faces and fabric, warm cinematic atmosphere. " +
+            "highly detailed, warm cinematic atmosphere. " +
             "Portrait orientation. No text, no words, no letters, no titles, no watermarks.";
 
-        if (scene != null) {
-            return String.format("Book cover illustration. %s. %s", scene, style);
-        } else {
-            return String.format(
-                "Book cover illustration for the novel \"%s\"%s. " +
-                "Dramatic romantic scene with two characters, moody atmosphere. %s",
-                title,
-                author != null && !author.isBlank() ? " by " + author : "",
-                style
-            );
+        // Prefer the AI-generated Russian description (abstract, safe)
+        if (description != null && !description.isBlank()) {
+            return String.format("Book cover illustration. %s. %s", description.strip(), style);
         }
+
+        // Fallback: purely atmospheric abstract prompt — no character names, no raw content
+        return String.format(
+            "Book cover illustration. Two young people in a dramatic emotional moment, " +
+            "tension and longing between them, moody elegant atmosphere, " +
+            "rich jewel-toned colors, soft candlelight. %s",
+            style
+        );
     }
 
     // ── SVG fallback cover ────────────────────────────────────────────────────
