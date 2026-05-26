@@ -78,11 +78,15 @@ public class CoverService {
                 log.info("Book {}: {} total paragraphs, {} prose paragraphs", bookId, paragraphs.size(), prose.size());
                 String excerpt = buildExcerpt(prose.isEmpty() ? paragraphs : prose, 1500);
 
-                // 1. Generate Russian description from actual book text
+                // 1. Generate Russian description (for UI display on book cards)
                 String description = generateDescription(title, author, excerpt);
 
-                // 2. Generate AI image cover (gpt-image-1)
-                byte[] coverBytes = generateCoverImage(title, author, description, excerpt);
+                // 2. Extract visual scene brief from excerpt (for image generation)
+                //    — describes setting, character appearances, mood without proper names
+                String visualBrief = extractVisualBrief(excerpt);
+
+                // 3. Generate AI image cover (gpt-image-1)
+                byte[] coverBytes = generateCoverImage(title, author, description, visualBrief);
 
                 // 3. Fall back to SVG if image generation failed
                 if (coverBytes == null) {
@@ -190,6 +194,43 @@ public class CoverService {
         }
     }
 
+    // ── Visual scene brief extraction ────────────────────────────────────────
+
+    /**
+     * Asks gpt-4.1-mini to extract a visual scene brief from the excerpt:
+     * setting, character appearances (no proper names), and atmosphere.
+     * Result is used as the image generation prompt — safe for gpt-image-1 moderation.
+     */
+    private String extractVisualBrief(String excerpt) {
+        if (excerpt == null || excerpt.isBlank()) return null;
+        try {
+            String userMsg =
+                "From this book excerpt, describe the visual scene for a cover illustration.\n" +
+                "Return a single dense paragraph in English with:\n" +
+                "- the specific location/setting (room details, lighting, objects)\n" +
+                "- physical appearance of each main character (hair color, build, clothing, expression) — " +
+                "DO NOT use their names, describe only looks\n" +
+                "- the emotional atmosphere and mood\n" +
+                "Be specific and concrete. Max 60 words.\n\n" +
+                "Excerpt:\n" + excerpt;
+
+            String result = openAiService.complete("gpt-4.1-mini", 150,
+                List.of(
+                    Map.of("role", "system", "content",
+                        "You are an art director writing image generation prompts. " +
+                        "Extract only visual, paintable details. Never use character names."),
+                    Map.of("role", "user", "content", userMsg)
+                )
+            );
+            log.info("Visual brief for excerpt: {}", result == null ? "null" :
+                    result.substring(0, Math.min(100, result.length())));
+            return result == null || result.isBlank() ? null : result.strip();
+        } catch (Exception e) {
+            log.warn("Visual brief extraction failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     // ── Cover image generation via gpt-image-1 ───────────────────────────────
 
     /**
@@ -209,22 +250,28 @@ public class CoverService {
         }
     }
 
-    /** Builds a safe illustration prompt for gpt-image-1.
-     *  Never includes raw excerpt text — only abstract description or title-based scene. */
-    private String buildCoverPrompt(String title, String author, String description, String excerpt) {
+    /** Builds a safe, scene-specific illustration prompt for gpt-image-1.
+     *  Uses visual brief (setting + character appearances) for scene accuracy,
+     *  falls back to Russian description, then generic atmosphere. */
+    private String buildCoverPrompt(String title, String author, String description, String visualBrief) {
         String style =
             "Style: professional digital painting, book cover illustration art, " +
             "vibrant rich colors, sharp crisp detail, clean composition, " +
             "soft luminous lighting, painterly brushwork with clean edges, " +
-            "highly detailed, warm cinematic atmosphere. " +
+            "highly detailed faces and setting, cinematic atmosphere. " +
             "Portrait orientation. No text, no words, no letters, no titles, no watermarks.";
 
-        // Prefer the AI-generated Russian description (abstract, safe)
+        // Best: visual brief extracted from actual book content (specific scene, no names)
+        if (visualBrief != null && !visualBrief.isBlank()) {
+            return String.format("Book cover illustration. %s. %s", visualBrief.strip(), style);
+        }
+
+        // Good: Russian description captures mood and theme
         if (description != null && !description.isBlank()) {
             return String.format("Book cover illustration. %s. %s", description.strip(), style);
         }
 
-        // Fallback: purely atmospheric abstract prompt — no character names, no raw content
+        // Last resort: generic romantic drama
         return String.format(
             "Book cover illustration. Two young people in a dramatic emotional moment, " +
             "tension and longing between them, moody elegant atmosphere, " +
