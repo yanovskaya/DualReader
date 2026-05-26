@@ -216,15 +216,15 @@ public class CoverService {
         if (excerpt == null || excerpt.isBlank()) return null;
         try {
             String userMsg =
-                "From this book excerpt, identify the PRIMARY main characters (the ones the story is fundamentally about, " +
-                "not minor characters or those mentioned briefly).\n\n" +
-                "Return a single dense paragraph in English describing a compelling scene for a cover illustration:\n" +
-                "- the PRIMARY main characters' names, physical appearance (hair color, build, clothing, expression)\n" +
-                "- the main setting/location where most of the story takes place\n" +
-                "- the dominant emotional atmosphere\n\n" +
-                "IMPORTANT: Focus on the characters who appear MOST throughout the excerpt. " +
-                "Ignore characters who only appear in one scene or are briefly mentioned. " +
-                "Use their actual names. Be specific and vivid. Max 80 words.\n\n" +
+                "From this book excerpt, identify the PRIMARY main characters and describe ONE compelling dramatic scene for a book cover.\n\n" +
+                "Return a single dense paragraph in English with:\n" +
+                "- the PRIMARY main characters' names (those who appear MOST throughout, not just in one scene)\n" +
+                "- their EXACT ages (must be stated: e.g. '17-year-old', '18-year-old', 'young adult') and physical appearance\n" +
+                "- ONE specific dramatic/emotional MOMENT or ACTION — NOT a static pose. Show tension, movement, confrontation, longing, decision\n" +
+                "- the setting/location for this moment\n\n" +
+                "CRITICAL: Characters must look their actual age. If the story is post-Hogwarts/8th year, characters are 17-18 years old young adults.\n" +
+                "Describe a SCENE with action and emotion, not just people standing side by side.\n" +
+                "Max 90 words.\n\n" +
                 "Excerpt:\n" + excerpt;
 
             String result = openAiService.complete("gpt-4.1-mini", 200,
@@ -276,9 +276,15 @@ public class CoverService {
             "highly detailed faces and setting, cinematic atmosphere. " +
             "Portrait orientation (2:3 ratio). No text, no words, no letters, no titles, no watermarks.";
 
+        String ageGuard =
+            "IMPORTANT: All characters must look their stated age — if 17 or 18 years old, " +
+            "they are fully mature teenagers/young adults, NOT children. " +
+            "Do NOT depict them as younger than their age.";
+
         // Best: visual brief with character names and scene details
         if (visualBrief != null && !visualBrief.isBlank()) {
-            return String.format("Book cover illustration. %s. %s", visualBrief.strip(), style);
+            return String.format("Book cover illustration. %s. %s %s",
+                    visualBrief.strip(), ageGuard, style);
         }
 
         // Good: Russian description captures mood and theme
