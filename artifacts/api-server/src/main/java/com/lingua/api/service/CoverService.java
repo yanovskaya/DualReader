@@ -77,14 +77,24 @@ public class CoverService {
                 // Filter to prose-only paragraphs, then build excerpt
                 List<String> prose = filterProse(paragraphs);
                 log.info("Book {}: {} total paragraphs, {} prose paragraphs", bookId, paragraphs.size(), prose.size());
-                String excerpt = buildExcerpt(prose.isEmpty() ? paragraphs : prose, 3000);
+                List<String> effective = prose.isEmpty() ? paragraphs : prose;
+
+                // Description: use the very beginning for context
+                String excerpt = buildExcerpt(effective, 0, 3000);
+
+                // Visual brief: sample 12 paragraphs evenly spread across the ENTIRE
+                // paragraph list (not just the opening). This way, if one early scene
+                // features a minor character (e.g. Sirius in a Dramione fic), the LLM
+                // sees all sections and identifies who dominates the story.
+                String briefExcerpt = buildSampledExcerpt(effective, 0, 3000);
+                log.info("Book {}: briefExcerpt sampled across {} prose paragraphs", bookId, effective.size());
 
                 // 1. Generate Russian description (for UI display on book cards)
                 String description = generateDescription(title, author, excerpt);
 
                 // 2. Extract visual scene brief from excerpt (for image generation)
                 //    — includes character names, setting, mood; Gemini accepts HP/fictional names
-                String visualBrief = extractVisualBrief(excerpt);
+                String visualBrief = extractVisualBrief(briefExcerpt);
 
                 // 3. Generate AI image cover (Gemini gemini-3-pro-image-preview)
                 byte[] coverBytes = generateCoverImage(title, author, description, visualBrief);
@@ -355,9 +365,33 @@ public class CoverService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static String buildExcerpt(List<String> paragraphs, int maxChars) {
+    private static String buildExcerpt(List<String> paragraphs, int startIndex, int maxChars) {
         StringBuilder sb = new StringBuilder();
-        for (String p : paragraphs) {
+        for (int i = startIndex; i < paragraphs.size(); i++) {
+            String p = paragraphs.get(i);
+            if (sb.length() + p.length() > maxChars) break;
+            sb.append(p).append("\n\n");
+        }
+        return sb.toString().strip();
+    }
+
+    /**
+     * Builds an excerpt by sampling evenly across the paragraph list starting at
+     * {@code startIndex}. Spreads picks across the remaining paragraphs so the
+     * result reflects who actually dominates the story, not just the opening scene.
+     */
+    private static String buildSampledExcerpt(List<String> paragraphs, int startIndex, int maxChars) {
+        if (paragraphs.isEmpty()) return "";
+        List<String> pool = paragraphs.subList(startIndex, paragraphs.size());
+        if (pool.isEmpty()) pool = paragraphs; // fallback if skip overshot
+
+        // Pick up to 12 evenly-spaced paragraphs from the pool
+        int picks = Math.min(12, pool.size());
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < picks; i++) {
+            int idx = (int) Math.round((double) i / (picks - 1) * (pool.size() - 1));
+            if (picks == 1) idx = 0;
+            String p = pool.get(idx);
             if (sb.length() + p.length() > maxChars) break;
             sb.append(p).append("\n\n");
         }
