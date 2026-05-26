@@ -62,8 +62,8 @@ public class UploadController {
             Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs);
 
             // Generate description + cover art asynchronously — doesn't block the response
-            // Pass first 20 paragraphs so AI can read the actual content
-            List<String> excerpt = paragraphs.subList(0, Math.min(20, paragraphs.size()));
+            // Pass first 100 paragraphs so AI can skip past metadata headers and find prose
+            List<String> excerpt = paragraphs.subList(0, Math.min(100, paragraphs.size()));
             coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor(), excerpt);
 
             Map<String, Object> m = new LinkedHashMap<>();

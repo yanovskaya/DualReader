@@ -80,7 +80,7 @@ public class BookController {
             // Fetch real paragraphs so the AI can write an accurate description
             List<String> paragraphTexts = paragraphRepo
                     .findByBookIdOrderByPosition(book.getId(),
-                            org.springframework.data.domain.PageRequest.of(0, 20))
+                            org.springframework.data.domain.PageRequest.of(0, 100))
                     .stream()
                     .map(p -> p.getOriginalText())
                     .toList();

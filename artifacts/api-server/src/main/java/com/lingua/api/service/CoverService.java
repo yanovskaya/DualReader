@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +31,6 @@ public class CoverService {
     private final BookRepository bookRepo;
     private final OpenAiService openAiService;
 
-    // Shared HTTP client (reused across calls)
     private static final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .followRedirects(HttpClient.Redirect.ALWAYS)
@@ -52,14 +52,27 @@ public class CoverService {
         {"#1a0d15", "#6b2a52", "#ffe8f5", "#f080c0"},
     };
 
+    // AO3 / fanfic metadata line prefixes to skip when building excerpt
+    private static final String[] METADATA_PREFIXES = {
+        "rating:", "archive warning:", "category:", "fandom:", "relationship:",
+        "characters:", "additional tags:", "language:", "stats:", "words:",
+        "kudos:", "bookmarks:", "hits:", "chapters:", "series:", "collections:",
+        "published:", "updated:", "summary:", "end notes:", "author's note:",
+        "posted originally on", "originally posted", "a/n:", "note:",
+        "disclaimer:", "warnings:", "pairing:", "status:"
+    };
+
     /**
      * Schedules async generation of description + AI cover image for a newly uploaded book.
-     * Receives the first few paragraphs so it can call AI without a separate DB read.
+     * Receives many paragraphs so it can skip metadata and find actual prose.
      */
-    public void scheduleGeneration(Integer bookId, String title, String author, List<String> firstParagraphs) {
+    public void scheduleGeneration(Integer bookId, String title, String author, List<String> paragraphs) {
         executor.submit(() -> {
             try {
-                String excerpt = buildExcerpt(firstParagraphs, 1500);
+                // Filter to prose-only paragraphs, then build excerpt
+                List<String> prose = filterProse(paragraphs);
+                log.info("Book {}: {} total paragraphs, {} prose paragraphs", bookId, paragraphs.size(), prose.size());
+                String excerpt = buildExcerpt(prose.isEmpty() ? paragraphs : prose, 1500);
 
                 // 1. Generate Russian description from actual book text
                 String description = generateDescription(title, author, excerpt);
@@ -97,6 +110,41 @@ public class CoverService {
         scheduleGeneration(bookId, title, author, List.of());
     }
 
+    // ── Prose filtering ───────────────────────────────────────────────────────
+
+    /**
+     * Filters out AO3/fanfic metadata lines, leaving only actual prose paragraphs.
+     */
+    private static List<String> filterProse(List<String> paragraphs) {
+        return paragraphs.stream()
+                .filter(CoverService::isProse)
+                .collect(Collectors.toList());
+    }
+
+    private static boolean isProse(String p) {
+        if (p == null || p.isBlank()) return false;
+        String trimmed = p.trim();
+
+        // Skip very short lines — metadata headers are usually brief
+        if (trimmed.length() < 60) return false;
+
+        String lower = trimmed.toLowerCase();
+
+        // Skip known AO3/fanfic metadata prefixes
+        for (String prefix : METADATA_PREFIXES) {
+            if (lower.startsWith(prefix)) return false;
+        }
+
+        // Skip lines containing URLs
+        if (trimmed.contains("http://") || trimmed.contains("https://")) return false;
+
+        // Skip lines that look like "Key: value" (colon within first 25 chars)
+        int colonIdx = trimmed.indexOf(':');
+        if (colonIdx > 0 && colonIdx < 25) return false;
+
+        return true;
+    }
+
     // ── Description generation ────────────────────────────────────────────────
 
     /**
@@ -104,24 +152,29 @@ public class CoverService {
      */
     private String generateDescription(String title, String author, String excerpt) {
         try {
-            log.info("Generating description for '{}' (excerpt {} chars)", title, excerpt == null ? 0 : excerpt.length());
+            if (excerpt == null || excerpt.isBlank()) {
+                log.warn("Empty excerpt for '{}', skipping description", title);
+                return null;
+            }
+            log.info("Generating description for '{}' (excerpt {} chars)", title, excerpt.length());
             String userMsg = String.format(
-                "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
-                "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
-                "передающих суть и атмосферу. Только описание, без лишних слов.",
+                "Book: \"%s\"%s\n\nOpening text:\n%s\n\n" +
+                "Write a short atmospheric description of this book in Russian — 1-2 sentences capturing the essence and mood. " +
+                "Only the description, nothing else.",
                 title,
-                author != null && !author.isBlank() ? " — " + author : "",
+                author != null && !author.isBlank() ? " by " + author : "",
                 excerpt
             );
 
             String result = openAiService.complete("gpt-5-nano", 200,
                 List.of(
                     Map.of("role", "system", "content",
-                        "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
+                        "You are a literary editor. Write short, atmospheric book descriptions in Russian."),
                     Map.of("role", "user", "content", userMsg)
                 )
             );
-            log.info("Description result for '{}': {} chars, blank={}", title, result == null ? -1 : result.length(), result == null || result.isBlank());
+            log.info("Description result for '{}': {} chars, blank={}", title,
+                    result == null ? -1 : result.length(), result == null || result.isBlank());
             return result == null ? null : result.strip();
         } catch (Exception e) {
             log.warn("Description generation failed for '{}': {}", title, e.getMessage());
@@ -132,19 +185,23 @@ public class CoverService {
     // ── Cover image generation via Pollinations.ai ────────────────────────────
 
     /**
-     * Generates an AI book cover illustration using Pollinations.ai (no API key needed).
+     * Generates an AI cover illustration using Pollinations.ai (no API key needed).
      * Returns image bytes (PNG or JPEG), or null if the request fails.
      */
     private byte[] generatePollinationsImage(String title, String author, String description, String excerpt) {
         try {
             String visualPrompt = buildCoverPrompt(title, author, description, excerpt);
-            log.info("Generating Pollinations cover for '{}': {}", title, visualPrompt);
+            String negativePrompt = "text, words, letters, writing, title, watermark, logo, " +
+                    "signature, typography, font, caption, label, headline, alphabet, numbers";
+
+            log.info("Pollinations prompt for '{}': {}…", title, visualPrompt.substring(0, Math.min(120, visualPrompt.length())));
 
             String encoded = URLEncoder.encode(visualPrompt, StandardCharsets.UTF_8);
-            // Use &format=jpeg for reliable binary response; Pollinations Flux supports it
+            String encodedNeg = URLEncoder.encode(negativePrompt, StandardCharsets.UTF_8);
             String url = "https://image.pollinations.ai/prompt/" + encoded
-                    + "?width=512&height=768&nologo=true&model=flux&format=jpeg&seed="
-                    + Math.abs(title.hashCode());
+                    + "?width=512&height=768&nologo=true&model=flux&format=jpeg"
+                    + "&seed=" + Math.abs(title.hashCode())
+                    + "&negative_prompt=" + encodedNeg;
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -156,15 +213,13 @@ public class CoverService {
 
             if (resp.statusCode() == 200) {
                 byte[] bytes = resp.body();
-                // Accept PNG (0x89 0x50) or JPEG (0xFF 0xD8)
                 boolean isPng  = bytes.length >= 4 && bytes[0] == (byte)0x89 && bytes[1] == (byte)0x50;
                 boolean isJpeg = bytes.length >= 2 && bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8;
                 if (isPng || isJpeg) {
                     log.info("Pollinations image received: {} KB ({})", bytes.length / 1024, isPng ? "PNG" : "JPEG");
                     return bytes;
                 }
-                log.warn("Pollinations returned unrecognised format ({} bytes, first byte: 0x{:02X})",
-                        bytes.length, bytes.length > 0 ? bytes[0] & 0xFF : 0);
+                log.warn("Pollinations returned unrecognised format ({} bytes)", bytes.length);
             } else {
                 log.warn("Pollinations returned HTTP {}", resp.statusCode());
             }
@@ -175,48 +230,40 @@ public class CoverService {
     }
 
     /**
-     * Builds a reliable illustration prompt from the book's content.
-     * No extra AI call — uses description and excerpt directly (Flux understands Russian).
+     * Builds a visual illustration prompt.
+     * Deliberately avoids "book cover" wording — Flux interprets it as a signal to add text/titles.
      */
     private String buildCoverPrompt(String title, String author, String description, String excerpt) {
-        // Prefer the AI-generated description; fall back to first 300 chars of excerpt
         String context = null;
         if (description != null && !description.isBlank()) {
             context = description.strip();
         } else if (excerpt != null && !excerpt.isBlank()) {
-            context = excerpt.length() > 300 ? excerpt.substring(0, 300).strip() + "…" : excerpt.strip();
+            context = excerpt.length() > 400 ? excerpt.substring(0, 400).strip() + "…" : excerpt.strip();
         }
-
-        String authorPart = (author != null && !author.isBlank()) ? " by " + author : "";
 
         String prompt;
         if (context != null) {
-            // Flux model understands Russian; embed the description directly
             prompt = String.format(
-                "Cinematic book cover illustration. Book: \"%s\"%s. Story: %s. " +
-                "Highly detailed painterly digital art, professional book cover, " +
-                "dramatic atmospheric lighting, rich environment, no text, no letters, no words",
-                title, authorPart, context
+                "Dramatic oil painting illustration. %s. " +
+                "Highly detailed, painterly brushwork, cinematic lighting, " +
+                "rich atmospheric colors, fantasy mood, masterful composition, " +
+                "no text, no words, no letters",
+                context
             );
         } else {
             prompt = String.format(
-                "Cinematic book cover illustration for \"%s\"%s, " +
-                "dramatic atmospheric lighting, rich detailed environment, " +
-                "painterly digital art, highly detailed, professional book cover, " +
-                "no text, no letters, no words",
-                title, authorPart
+                "Dramatic fantasy portrait, cinematic atmospheric lighting, " +
+                "inspired by \"%s\", highly detailed oil painting, rich colors, " +
+                "moody atmosphere, no text, no words, no letters",
+                title
             );
         }
 
-        log.info("Cover prompt for '{}': {}", title, prompt.length() > 120 ? prompt.substring(0, 120) + "…" : prompt);
         return prompt;
     }
 
     // ── SVG fallback cover ────────────────────────────────────────────────────
 
-    /**
-     * Generates a beautiful SVG cover from the book title hash. Always succeeds.
-     */
     public byte[] generateSvgCover(String title, String author) {
         String[] palette = PALETTES[Math.abs(hashStr(title)) % PALETTES.length];
         String top    = palette[0];
