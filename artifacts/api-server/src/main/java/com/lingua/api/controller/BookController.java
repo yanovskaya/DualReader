@@ -240,6 +240,8 @@ public class BookController {
         m.put("translationStatus", b.getTranslationStatus());
         m.put("createdAt", b.getCreatedAt().toString());
         m.put("description", b.getDescription());
+        boolean hasCover = b.getCoverImage() != null && b.getCoverImage().length > 0;
+        m.put("coverImageUrl", hasCover ? "/api/books/" + b.getId() + "/cover" : null);
         return m;
     }
 }
