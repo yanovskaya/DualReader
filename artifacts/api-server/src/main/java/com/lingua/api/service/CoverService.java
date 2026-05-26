@@ -77,7 +77,7 @@ public class CoverService {
                 // Filter to prose-only paragraphs, then build excerpt
                 List<String> prose = filterProse(paragraphs);
                 log.info("Book {}: {} total paragraphs, {} prose paragraphs", bookId, paragraphs.size(), prose.size());
-                String excerpt = buildExcerpt(prose.isEmpty() ? paragraphs : prose, 1500);
+                String excerpt = buildExcerpt(prose.isEmpty() ? paragraphs : prose, 3000);
 
                 // 1. Generate Russian description (for UI display on book cards)
                 String description = generateDescription(title, author, excerpt);
@@ -206,19 +206,23 @@ public class CoverService {
         if (excerpt == null || excerpt.isBlank()) return null;
         try {
             String userMsg =
-                "From this book excerpt, describe the visual scene for a cover illustration.\n" +
-                "Return a single dense paragraph in English with:\n" +
-                "- the specific location/setting (e.g. 'Hogwarts corridor', 'dimly lit bedroom')\n" +
-                "- each main character's name, physical appearance (hair, build, clothing, expression)\n" +
-                "- the emotional atmosphere and mood\n" +
-                "Be specific and vivid. Use character names and place names from the text. Max 70 words.\n\n" +
+                "From this book excerpt, identify the PRIMARY main characters (the ones the story is fundamentally about, " +
+                "not minor characters or those mentioned briefly).\n\n" +
+                "Return a single dense paragraph in English describing a compelling scene for a cover illustration:\n" +
+                "- the PRIMARY main characters' names, physical appearance (hair color, build, clothing, expression)\n" +
+                "- the main setting/location where most of the story takes place\n" +
+                "- the dominant emotional atmosphere\n\n" +
+                "IMPORTANT: Focus on the characters who appear MOST throughout the excerpt. " +
+                "Ignore characters who only appear in one scene or are briefly mentioned. " +
+                "Use their actual names. Be specific and vivid. Max 80 words.\n\n" +
                 "Excerpt:\n" + excerpt;
 
-            String result = openAiService.complete("gpt-4.1-mini", 180,
+            String result = openAiService.complete("gpt-4.1-mini", 200,
                 List.of(
                     Map.of("role", "system", "content",
-                        "You are an art director writing image generation prompts. " +
-                        "Describe visual, paintable scene details including character names and setting names."),
+                        "You are an art director creating book cover briefs. " +
+                        "Identify the PRIMARY main characters (most prominent throughout the text), " +
+                        "not just whoever appears in the opening scene. Include their names and setting names."),
                     Map.of("role", "user", "content", userMsg)
                 )
             );
