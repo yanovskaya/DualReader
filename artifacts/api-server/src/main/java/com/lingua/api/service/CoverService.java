@@ -207,18 +207,22 @@ public class CoverService {
             String userMsg =
                 "From this book excerpt, describe the visual scene for a cover illustration.\n" +
                 "Return a single dense paragraph in English with:\n" +
-                "- the specific location/setting (room details, lighting, objects)\n" +
+                "- the location/setting described in GENERIC terms (e.g. 'ancient stone castle corridor', " +
+                "'dimly lit bedroom', 'moonlit courtyard') — NO franchise names, NO IP names\n" +
                 "- physical appearance of each main character (hair color, build, clothing, expression) — " +
-                "DO NOT use their names, describe only looks\n" +
+                "NO character names\n" +
                 "- the emotional atmosphere and mood\n" +
-                "Be specific and concrete. Max 60 words.\n\n" +
+                "CRITICAL: Never mention any franchise, brand, or IP names " +
+                "(e.g. replace 'Hogwarts' with 'ancient magic school', 'thestral' with 'skeletal winged horse', " +
+                "'wand' with 'magic staff'). Max 60 words.\n\n" +
                 "Excerpt:\n" + excerpt;
 
             String result = openAiService.complete("gpt-4.1-mini", 150,
                 List.of(
                     Map.of("role", "system", "content",
                         "You are an art director writing image generation prompts. " +
-                        "Extract only visual, paintable details. Never use character names."),
+                        "Describe only visual, paintable details. Never use character names, " +
+                        "franchise names, or any copyrighted IP names."),
                     Map.of("role", "user", "content", userMsg)
                 )
             );
