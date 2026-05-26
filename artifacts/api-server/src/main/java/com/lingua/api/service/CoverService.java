@@ -48,7 +48,22 @@ public class CoverService {
         "kudos:", "bookmarks:", "hits:", "chapters:", "series:", "collections:",
         "published:", "updated:", "summary:", "end notes:", "author's note:",
         "posted originally on", "originally posted", "a/n:", "note:",
-        "disclaimer:", "warnings:", "pairing:", "status:"
+        "disclaimer:", "warnings:", "pairing:", "status:",
+        // Author's notes / community messages
+        "hi everyone", "hello everyone", "hey everyone", "hi all", "hello all",
+        "hi guys", "hello guys", "hey guys", "hi there", "hello there",
+        "welcome to", "welcome back", "so this is", "this is my",
+        "this is a new", "this is the", "this story", "this fic", "this fanfic",
+        "thank you for reading", "thanks for reading", "please review",
+        "please comment", "please leave a review", "don't forget to",
+        "i do not own", "i don't own", "i own nothing", "no copyright",
+        "this was", "this chapter", "this is just",
+        "as always", "as usual", "once again"
+    };
+
+    private static final String[] METADATA_CONTAINS = {
+        "fanfiction.net", "ao3.org", "archiveofourown", "ffnet", "ff.net",
+        "follow/favorite", "follow / favorite", "leave a review"
     };
 
     /**
@@ -130,6 +145,11 @@ public class CoverService {
         // Skip lines that look like "Key: value" (colon within first 25 chars)
         int colonIdx = trimmed.indexOf(':');
         if (colonIdx > 0 && colonIdx < 25) return false;
+
+        // Skip lines containing fanfic community keywords anywhere
+        for (String kw : METADATA_CONTAINS) {
+            if (lower.contains(kw)) return false;
+        }
 
         return true;
     }
