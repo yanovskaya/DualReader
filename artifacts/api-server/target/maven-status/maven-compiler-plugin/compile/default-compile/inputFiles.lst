@@ -8,6 +8,7 @@
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/controller/UploadController.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/config/AsyncConfig.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/config/DatabaseConfig.java
+/home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/GeminiService.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/repository/ParagraphRepository.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/TranslationService.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/LinguaApiApplication.java

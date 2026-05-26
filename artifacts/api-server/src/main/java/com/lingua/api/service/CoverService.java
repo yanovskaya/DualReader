@@ -24,6 +24,7 @@ public class CoverService {
 
     private final BookRepository bookRepo;
     private final OpenAiService openAiService;
+    private final GeminiService geminiService;
 
     // 12 rich, dark gradient palettes (SVG fallback)
     private static final String[][] PALETTES = {
@@ -82,15 +83,15 @@ public class CoverService {
                 String description = generateDescription(title, author, excerpt);
 
                 // 2. Extract visual scene brief from excerpt (for image generation)
-                //    — describes setting, character appearances, mood without proper names
+                //    — includes character names, setting, mood; Gemini accepts HP/fictional names
                 String visualBrief = extractVisualBrief(excerpt);
 
-                // 3. Generate AI image cover (gpt-image-1)
+                // 3. Generate AI image cover (Gemini gemini-3-pro-image-preview)
                 byte[] coverBytes = generateCoverImage(title, author, description, visualBrief);
 
-                // 3. Fall back to SVG if image generation failed
+                // Fall back to SVG if image generation failed
                 if (coverBytes == null) {
-                    log.warn("gpt-image-1 failed for book {}, using SVG fallback", bookId);
+                    log.warn("Gemini image generation failed for book {}, using SVG fallback", bookId);
                     coverBytes = generateSvgCover(title, author);
                 }
 
@@ -198,8 +199,8 @@ public class CoverService {
 
     /**
      * Asks gpt-4.1-mini to extract a visual scene brief from the excerpt:
-     * setting, character appearances (no proper names), and atmosphere.
-     * Result is used as the image generation prompt — safe for gpt-image-1 moderation.
+     * setting, character appearances (with their actual names), and atmosphere.
+     * Gemini image generation accepts character/franchise names freely.
      */
     private String extractVisualBrief(String excerpt) {
         if (excerpt == null || excerpt.isBlank()) return null;
@@ -207,27 +208,22 @@ public class CoverService {
             String userMsg =
                 "From this book excerpt, describe the visual scene for a cover illustration.\n" +
                 "Return a single dense paragraph in English with:\n" +
-                "- the location/setting described in GENERIC terms (e.g. 'ancient stone castle corridor', " +
-                "'dimly lit bedroom', 'moonlit courtyard') — NO franchise names, NO IP names\n" +
-                "- physical appearance of each main character (hair color, build, clothing, expression) — " +
-                "NO character names\n" +
+                "- the specific location/setting (e.g. 'Hogwarts corridor', 'dimly lit bedroom')\n" +
+                "- each main character's name, physical appearance (hair, build, clothing, expression)\n" +
                 "- the emotional atmosphere and mood\n" +
-                "CRITICAL: Never mention any franchise, brand, or IP names " +
-                "(e.g. replace 'Hogwarts' with 'ancient magic school', 'thestral' with 'skeletal winged horse', " +
-                "'wand' with 'magic staff'). Max 60 words.\n\n" +
+                "Be specific and vivid. Use character names and place names from the text. Max 70 words.\n\n" +
                 "Excerpt:\n" + excerpt;
 
-            String result = openAiService.complete("gpt-4.1-mini", 150,
+            String result = openAiService.complete("gpt-4.1-mini", 180,
                 List.of(
                     Map.of("role", "system", "content",
                         "You are an art director writing image generation prompts. " +
-                        "Describe only visual, paintable details. Never use character names, " +
-                        "franchise names, or any copyrighted IP names."),
+                        "Describe visual, paintable scene details including character names and setting names."),
                     Map.of("role", "user", "content", userMsg)
                 )
             );
             log.info("Visual brief for excerpt: {}", result == null ? "null" :
-                    result.substring(0, Math.min(100, result.length())));
+                    result.substring(0, Math.min(120, result.length())));
             return result == null || result.isBlank() ? null : result.strip();
         } catch (Exception e) {
             log.warn("Visual brief extraction failed: {}", e.getMessage());
@@ -235,37 +231,38 @@ public class CoverService {
         }
     }
 
-    // ── Cover image generation via gpt-image-1 ───────────────────────────────
+    // ── Cover image generation via Gemini ────────────────────────────────────
 
     /**
-     * Generates a portrait cover illustration using gpt-image-1 (1024x1536).
-     * Returns raw PNG bytes, or null if generation fails.
+     * Generates a portrait cover illustration using Gemini gemini-3-pro-image-preview.
+     * Returns raw PNG/JPEG bytes, or null if generation fails.
+     * Gemini accepts fictional character names (HP, etc.) without content filtering.
      */
-    private byte[] generateCoverImage(String title, String author, String description, String excerpt) {
+    private byte[] generateCoverImage(String title, String author, String description, String visualBrief) {
         try {
-            String prompt = buildCoverPrompt(title, author, description, excerpt);
-            log.info("gpt-image-1 prompt for '{}': {}…", title, prompt.substring(0, Math.min(120, prompt.length())));
-            byte[] bytes = openAiService.imageGenerate(prompt, "1024x1536");
-            log.info("gpt-image-1 image received: {} KB", bytes.length / 1024);
+            String prompt = buildCoverPrompt(title, author, description, visualBrief);
+            log.info("Gemini cover prompt for '{}': {}…", title, prompt.substring(0, Math.min(140, prompt.length())));
+            byte[] bytes = geminiService.generateImage(prompt, "gemini-3-pro-image-preview");
+            log.info("Gemini image received for '{}': {} KB", title, bytes.length / 1024);
             return bytes;
         } catch (Exception e) {
-            log.warn("gpt-image-1 generation failed for '{}': {}", title, e.getMessage());
+            log.warn("Gemini generation failed for '{}': {}", title, e.getMessage());
             return null;
         }
     }
 
-    /** Builds a safe, scene-specific illustration prompt for gpt-image-1.
-     *  Uses visual brief (setting + character appearances) for scene accuracy,
-     *  falls back to Russian description, then generic atmosphere. */
+    /** Builds a vivid scene-specific cover illustration prompt for Gemini.
+     *  Gemini accepts character names (Hermione, Draco, Hogwarts) directly.
+     *  Uses visual brief → Russian description → generic fallback. */
     private String buildCoverPrompt(String title, String author, String description, String visualBrief) {
         String style =
             "Style: professional digital painting, book cover illustration art, " +
             "vibrant rich colors, sharp crisp detail, clean composition, " +
             "soft luminous lighting, painterly brushwork with clean edges, " +
             "highly detailed faces and setting, cinematic atmosphere. " +
-            "Portrait orientation. No text, no words, no letters, no titles, no watermarks.";
+            "Portrait orientation (2:3 ratio). No text, no words, no letters, no titles, no watermarks.";
 
-        // Best: visual brief extracted from actual book content (specific scene, no names)
+        // Best: visual brief with character names and scene details
         if (visualBrief != null && !visualBrief.isBlank()) {
             return String.format("Book cover illustration. %s. %s", visualBrief.strip(), style);
         }
@@ -275,12 +272,13 @@ public class CoverService {
             return String.format("Book cover illustration. %s. %s", description.strip(), style);
         }
 
-        // Last resort: generic romantic drama
+        // Last resort: generic atmosphere
         return String.format(
-            "Book cover illustration. Two young people in a dramatic emotional moment, " +
+            "Book cover illustration for the book \"%s\". " +
+            "Two young people in a dramatic emotional moment, " +
             "tension and longing between them, moody elegant atmosphere, " +
             "rich jewel-toned colors, soft candlelight. %s",
-            style
+            title, style
         );
     }
 

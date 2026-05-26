@@ -12,6 +12,7 @@ com/lingua/api/model/Paragraph.class
 com/lingua/api/config/CorsConfig.class
 com/lingua/api/config/DatabaseConfig.class
 com/lingua/api/service/DictionaryService.class
+com/lingua/api/service/GeminiService.class
 com/lingua/api/service/TranslationService.class
 com/lingua/api/repository/BookRepository.class
 com/lingua/api/controller/UploadController.class
