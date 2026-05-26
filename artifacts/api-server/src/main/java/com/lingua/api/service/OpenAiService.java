@@ -63,12 +63,26 @@ public class OpenAiService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("HTTP " + response.statusCode() + ": " + response.body());
+            }
             Map<?, ?> parsed = mapper.readValue(response.body(), Map.class);
             List<?> choices = (List<?>) parsed.get("choices");
-            if (choices == null || choices.isEmpty()) return "";
+            if (choices == null || choices.isEmpty()) {
+                Object errObj = parsed.get("error");
+                Object errMsg = errObj instanceof Map<?, ?> errMap ? errMap.get("message") : null;
+                String err = errMsg != null ? String.valueOf(errMsg) : "no choices";
+                throw new RuntimeException("No choices in response: " + err);
+            }
             Map<?, ?> first = (Map<?, ?>) choices.get(0);
+            String finishReason = (String) first.get("finish_reason");
             Map<?, ?> message = (Map<?, ?>) first.get("message");
-            return message == null ? "" : String.valueOf(message.get("content"));
+            Object content = message == null ? null : message.get("content");
+            String text = content == null ? "" : String.valueOf(content);
+            if (text.isBlank() && "content_filter".equals(finishReason)) {
+                throw new RuntimeException("Response blocked by content_filter");
+            }
+            return text;
         } catch (Exception e) {
             throw new RuntimeException("OpenAI chat API failed [url=" + chatUrl + "]: " + e.getMessage(), e);
         }

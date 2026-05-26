@@ -161,65 +161,31 @@ public class CoverService {
      */
     private String generateDescription(String title, String author, String excerpt) {
         try {
-            log.info("Generating description for '{}' (excerpt {} chars)",
-                    title, excerpt == null ? 0 : excerpt.length());
-
-            // First try: use actual excerpt (may be blocked by content moderation)
-            String result = null;
-            if (excerpt != null && !excerpt.isBlank()) {
-                result = tryGenerateDescription(title, author, excerpt);
+            if (excerpt == null || excerpt.isBlank()) {
+                log.warn("Empty excerpt for '{}', skipping description", title);
+                return null;
             }
-
-            // Fallback: title-only prompt — no character names, no raw content
-            if (result == null || result.isBlank()) {
-                log.info("Trying title-only description for '{}'", title);
-                result = tryGenerateDescription(title, author, null);
-            }
-
-            log.info("Description result for '{}': {} chars, blank={}", title,
-                    result == null ? -1 : result.length(), result == null || result.isBlank());
-            return result == null ? null : result.strip();
-        } catch (Exception e) {
-            log.warn("Description generation failed for '{}': {}", title, e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Single attempt at generating a description.
-     * If excerpt is null, generates purely from the title (safe — no character names).
-     */
-    private String tryGenerateDescription(String title, String author, String excerpt) {
-        try {
-            String userMsg;
-            if (excerpt != null && !excerpt.isBlank()) {
-                userMsg = String.format(
-                    "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
-                    "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
-                    "передающих суть и атмосферу. Только описание, без лишних слов.",
-                    title,
-                    author != null && !author.isBlank() ? " — " + author : "",
-                    excerpt
-                );
-            } else {
-                userMsg = String.format(
-                    "Напиши краткое атмосферное описание романа с названием \"%s\"%s " +
-                    "на русском языке — 1-2 предложения, передающих жанр и настроение. " +
-                    "Это роман о любви, напряжении и эмоциях. Только описание, без лишних слов.",
-                    title,
-                    author != null && !author.isBlank() ? " — " + author : ""
-                );
-            }
-            String result = openAiService.complete("gpt-5-nano", 250,
+            log.info("Generating description for '{}' (excerpt {} chars)", title, excerpt.length());
+            String userMsg = String.format(
+                "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
+                "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
+                "передающих суть и атмосферу. Только описание, без лишних слов.",
+                title,
+                author != null && !author.isBlank() ? " — " + author : "",
+                excerpt
+            );
+            String result = openAiService.complete("gpt-4.1-mini", 250,
                 List.of(
                     Map.of("role", "system", "content",
                         "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
                     Map.of("role", "user", "content", userMsg)
                 )
             );
+            log.info("Description result for '{}': {} chars", title,
+                    result == null ? -1 : result.length());
             return result == null || result.isBlank() ? null : result.strip();
         } catch (Exception e) {
-            log.warn("tryGenerateDescription failed for '{}': {}", title, e.getMessage());
+            log.warn("Description generation failed for '{}': {}", title, e.getMessage());
             return null;
         }
     }
