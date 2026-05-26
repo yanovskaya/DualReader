@@ -7,13 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -30,11 +24,6 @@ public class CoverService {
 
     private final BookRepository bookRepo;
     private final OpenAiService openAiService;
-
-    private static final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .build();
 
     // 12 rich, dark gradient palettes (SVG fallback)
     private static final String[][] PALETTES = {
@@ -77,12 +66,12 @@ public class CoverService {
                 // 1. Generate Russian description from actual book text
                 String description = generateDescription(title, author, excerpt);
 
-                // 2. Generate AI image cover (Pollinations.ai — no key required)
-                byte[] coverBytes = generatePollinationsImage(title, author, description, excerpt);
+                // 2. Generate AI image cover (gpt-image-1)
+                byte[] coverBytes = generateCoverImage(title, author, description, excerpt);
 
                 // 3. Fall back to SVG if image generation failed
                 if (coverBytes == null) {
-                    log.warn("Pollinations failed for book {}, using SVG fallback", bookId);
+                    log.warn("gpt-image-1 failed for book {}, using SVG fallback", bookId);
                     coverBytes = generateSvgCover(title, author);
                 }
 
@@ -158,18 +147,18 @@ public class CoverService {
             }
             log.info("Generating description for '{}' (excerpt {} chars)", title, excerpt.length());
             String userMsg = String.format(
-                "Book: \"%s\"%s\n\nOpening text:\n%s\n\n" +
-                "Write a short atmospheric description of this book in Russian — 1-2 sentences capturing the essence and mood. " +
-                "Only the description, nothing else.",
+                "Книга: \"%s\"%s\n\nНачало текста:\n%s\n\n" +
+                "Напиши краткое описание книги на русском языке — 1-2 предложения, " +
+                "передающих суть и атмосферу. Только описание, без лишних слов.",
                 title,
-                author != null && !author.isBlank() ? " by " + author : "",
+                author != null && !author.isBlank() ? " — " + author : "",
                 excerpt
             );
 
             String result = openAiService.complete("gpt-5-nano", 200,
                 List.of(
                     Map.of("role", "system", "content",
-                        "You are a literary editor. Write short, atmospheric book descriptions in Russian."),
+                        "Ты литературный редактор. Пишешь краткие, атмосферные аннотации к книгам на русском языке."),
                     Map.of("role", "user", "content", userMsg)
                 )
             );
@@ -182,84 +171,52 @@ public class CoverService {
         }
     }
 
-    // ── Cover image generation via Pollinations.ai ────────────────────────────
+    // ── Cover image generation via gpt-image-1 ───────────────────────────────
 
     /**
-     * Generates an AI cover illustration using Pollinations.ai (no API key needed).
-     * Returns image bytes (PNG or JPEG), or null if the request fails.
+     * Generates a portrait cover illustration using gpt-image-1 (1024x1536).
+     * Returns raw PNG bytes, or null if generation fails.
      */
-    private byte[] generatePollinationsImage(String title, String author, String description, String excerpt) {
+    private byte[] generateCoverImage(String title, String author, String description, String excerpt) {
         try {
-            String visualPrompt = buildCoverPrompt(title, author, description, excerpt);
-            String negativePrompt = "text, words, letters, writing, title, watermark, logo, " +
-                    "signature, typography, font, caption, label, headline, alphabet, numbers";
-
-            log.info("Pollinations prompt for '{}': {}…", title, visualPrompt.substring(0, Math.min(120, visualPrompt.length())));
-
-            String encoded = URLEncoder.encode(visualPrompt, StandardCharsets.UTF_8);
-            String encodedNeg = URLEncoder.encode(negativePrompt, StandardCharsets.UTF_8);
-            String url = "https://image.pollinations.ai/prompt/" + encoded
-                    + "?width=512&height=768&nologo=true&model=flux&format=jpeg"
-                    + "&seed=" + Math.abs(title.hashCode())
-                    + "&negative_prompt=" + encodedNeg;
-
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(90))
-                    .GET()
-                    .build();
-
-            HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
-
-            if (resp.statusCode() == 200) {
-                byte[] bytes = resp.body();
-                boolean isPng  = bytes.length >= 4 && bytes[0] == (byte)0x89 && bytes[1] == (byte)0x50;
-                boolean isJpeg = bytes.length >= 2 && bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8;
-                if (isPng || isJpeg) {
-                    log.info("Pollinations image received: {} KB ({})", bytes.length / 1024, isPng ? "PNG" : "JPEG");
-                    return bytes;
-                }
-                log.warn("Pollinations returned unrecognised format ({} bytes)", bytes.length);
-            } else {
-                log.warn("Pollinations returned HTTP {}", resp.statusCode());
-            }
+            String prompt = buildCoverPrompt(title, author, description, excerpt);
+            log.info("gpt-image-1 prompt for '{}': {}…", title, prompt.substring(0, Math.min(120, prompt.length())));
+            byte[] bytes = openAiService.imageGenerate(prompt, "1024x1536");
+            log.info("gpt-image-1 image received: {} KB", bytes.length / 1024);
+            return bytes;
         } catch (Exception e) {
-            log.warn("Pollinations image generation failed: {}", e.getMessage());
+            log.warn("gpt-image-1 generation failed for '{}': {}", title, e.getMessage());
+            return null;
         }
-        return null;
     }
 
-    /**
-     * Builds a visual illustration prompt.
-     * Deliberately avoids "book cover" wording — Flux interprets it as a signal to add text/titles.
-     */
+    /** Builds a rich illustration prompt for gpt-image-1. */
     private String buildCoverPrompt(String title, String author, String description, String excerpt) {
         String context = null;
         if (description != null && !description.isBlank()) {
             context = description.strip();
         } else if (excerpt != null && !excerpt.isBlank()) {
-            context = excerpt.length() > 400 ? excerpt.substring(0, 400).strip() + "…" : excerpt.strip();
+            context = excerpt.length() > 600 ? excerpt.substring(0, 600).strip() + "…" : excerpt.strip();
         }
 
-        String prompt;
         if (context != null) {
-            prompt = String.format(
-                "Dramatic oil painting illustration. %s. " +
-                "Highly detailed, painterly brushwork, cinematic lighting, " +
-                "rich atmospheric colors, fantasy mood, masterful composition, " +
-                "no text, no words, no letters",
+            return String.format(
+                "Cinematic illustration for a novel. %s. " +
+                "Style: dramatic oil painting, highly detailed, masterful brushwork, " +
+                "atmospheric lighting, rich colors, emotional depth. " +
+                "No text, no words, no letters, no watermarks.",
                 context
             );
         } else {
-            prompt = String.format(
-                "Dramatic fantasy portrait, cinematic atmospheric lighting, " +
-                "inspired by \"%s\", highly detailed oil painting, rich colors, " +
-                "moody atmosphere, no text, no words, no letters",
-                title
+            return String.format(
+                "Cinematic illustration for the novel \"%s\"%s. " +
+                "Style: dramatic oil painting, highly detailed, masterful brushwork, " +
+                "atmospheric lighting, rich colors, emotional depth. " +
+                "No text, no words, no letters, no watermarks.",
+                title,
+                author != null && !author.isBlank() ? " by " + author : ""
             );
         }
-
-        return prompt;
     }
 
     // ── SVG fallback cover ────────────────────────────────────────────────────
