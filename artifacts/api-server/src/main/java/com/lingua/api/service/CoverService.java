@@ -212,29 +212,33 @@ public class CoverService {
 
     /** Builds a rich illustration prompt for gpt-image-1. */
     private String buildCoverPrompt(String title, String author, String description, String excerpt) {
-        String context = null;
+        // Build a clean scene context: prefer short description, fall back to brief excerpt
+        String scene = null;
         if (description != null && !description.isBlank()) {
-            context = description.strip();
+            // Use Russian description — gpt-image-1 handles it well
+            scene = description.strip();
         } else if (excerpt != null && !excerpt.isBlank()) {
-            context = excerpt.length() > 600 ? excerpt.substring(0, 600).strip() + "…" : excerpt.strip();
+            // Use only first 250 chars of clean prose to avoid noisy content
+            String clean = excerpt.strip();
+            scene = clean.length() > 250 ? clean.substring(0, 250).strip() + "…" : clean;
         }
 
-        if (context != null) {
-            return String.format(
-                "Cinematic illustration for a novel. %s. " +
-                "Style: dramatic oil painting, highly detailed, masterful brushwork, " +
-                "atmospheric lighting, rich colors, emotional depth. " +
-                "No text, no words, no letters, no watermarks.",
-                context
-            );
+        String style =
+            "Style: professional digital painting, book cover illustration art, " +
+            "vibrant rich colors, sharp crisp detail, clean composition, " +
+            "soft luminous lighting, painterly brushwork with clean edges, " +
+            "highly detailed faces and fabric, warm cinematic atmosphere. " +
+            "Portrait orientation. No text, no words, no letters, no titles, no watermarks.";
+
+        if (scene != null) {
+            return String.format("Book cover illustration. %s. %s", scene, style);
         } else {
             return String.format(
-                "Cinematic illustration for the novel \"%s\"%s. " +
-                "Style: dramatic oil painting, highly detailed, masterful brushwork, " +
-                "atmospheric lighting, rich colors, emotional depth. " +
-                "No text, no words, no letters, no watermarks.",
+                "Book cover illustration for the novel \"%s\"%s. " +
+                "Dramatic romantic scene with two characters, moody atmosphere. %s",
                 title,
-                author != null && !author.isBlank() ? " by " + author : ""
+                author != null && !author.isBlank() ? " by " + author : "",
+                style
             );
         }
     }
