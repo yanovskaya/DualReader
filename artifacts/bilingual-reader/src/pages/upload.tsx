@@ -95,20 +95,38 @@ export default function UploadPage() {
       setLocation(`/processing/${book.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
-      // "Load failed" (Safari) / "Failed to fetch" (Chrome) means the network
-      // request was interrupted by the Service Worker taking over — but the
-      // server likely processed the upload already. Send the user to the
-      // library so they can see their book.
-      const isSwInterrupt = msg === "Load failed" || msg === "Failed to fetch";
-      if (isSwInterrupt) {
+      const isNetworkError = msg === "Load failed" || msg === "Failed to fetch" || msg === "Network request failed";
+      if (isNetworkError) {
+        // Check whether the book actually made it to the server despite the fetch error
+        try {
+          const books: Array<{ id: number; title: string; createdAt: string }> = await fetch("/api/books").then(r => r.json());
+          const uploadedTitle = title.trim() || file.name.replace(/\.(txt|epub)$/i, "").replace(/[-_]/g, " ");
+          const recent = books.find(b =>
+            b.title.toLowerCase() === uploadedTitle.toLowerCase() &&
+            Date.now() - new Date(b.createdAt).getTime() < 120_000
+          );
+          if (recent) {
+            fetch(`/api/books/${recent.id}/translate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ batchSize: 8 }),
+            }).catch(() => {});
+            toast({ title: "Книга загружена", description: "Перевод запущен." });
+            setLocation(`/processing/${recent.id}`);
+            return;
+          }
+        } catch { /* server unreachable */ }
+
         toast({
-          title: "Возможно, книга уже загружена",
-          description: "Соединение прервалось, но книга могла сохраниться. Проверьте библиотеку.",
+          title: "Не удалось загрузить файл",
+          description: "Соединение прервалось. Попробуйте ещё раз.",
+          variant: "destructive",
         });
-        setLocation("/");
+        setIsUploading(false);
+        setUploadStatus("");
       } else {
         toast({
-          title: "Upload failed",
+          title: "Ошибка загрузки",
           description: msg,
           variant: "destructive",
         });

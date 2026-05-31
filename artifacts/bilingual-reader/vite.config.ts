@@ -55,6 +55,22 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         runtimeCaching: [
           {
+            // All API write/mutation requests — bypass SW entirely, go direct to network
+            urlPattern: /\/api\/.*/,
+            handler: "NetworkOnly",
+            method: "POST",
+          },
+          {
+            urlPattern: /\/api\/.*/,
+            handler: "NetworkOnly",
+            method: "PUT",
+          },
+          {
+            urlPattern: /\/api\/.*/,
+            handler: "NetworkOnly",
+            method: "DELETE",
+          },
+          {
             // Paragraphs — CacheFirst; primary offline mechanism is IDB but SW adds another layer
             urlPattern: /\/api\/books\/\d+\/paragraphs(\?.*)?$/,
             handler: "CacheFirst",
