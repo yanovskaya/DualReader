@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, FileText, X, BookOpen } from "lucide-react";
 
@@ -19,6 +20,7 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [convertToAmerican, setConvertToAmerican] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
@@ -66,6 +68,7 @@ export default function UploadPage() {
       formData.append("file", file);
       if (title.trim()) formData.append("title", title.trim());
       if (author.trim()) formData.append("author", author.trim());
+      if (convertToAmerican) formData.append("convertToAmerican", "true");
 
       const uploadRes = await fetch("/api/books/upload", {
         method: "POST",
@@ -195,6 +198,22 @@ export default function UploadPage() {
                     placeholder="Author name"
                     className="bg-background"
                   />
+                </div>
+                <div className="flex items-start gap-3 pt-1">
+                  <Checkbox
+                    id="convert-american"
+                    checked={convertToAmerican}
+                    onCheckedChange={(v) => setConvertToAmerican(v === true)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <label htmlFor="convert-american" className="text-sm font-medium text-foreground cursor-pointer">
+                      Convert British English → American English
+                    </label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Replaces British spellings and vocabulary (colour→color, realise→realize, flat→apartment, etc.) during translation
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>

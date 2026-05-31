@@ -51,7 +51,7 @@ public class BookService {
     }
 
     @Transactional
-    public Book createBookFromParagraphs(String title, String author, List<String> paragraphTexts) {
+    public Book createBookFromParagraphs(String title, String author, List<String> paragraphTexts, boolean convertBritishToAmerican) {
         Book book = new Book();
         book.setUserId("default");
         book.setTitle(title);
@@ -60,6 +60,7 @@ public class BookService {
         book.setTotalParagraphs(paragraphTexts.size());
         book.setTranslatedParagraphs(0);
         book.setTranslationStatus("pending");
+        book.setConvertBritishToAmerican(convertBritishToAmerican);
         bookRepo.save(book);
 
         insertParagraphBatch(book.getId(), paragraphTexts);

@@ -26,7 +26,8 @@ public class UploadController {
     public ResponseEntity<?> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "title", required = false) String customTitle,
-            @RequestParam(value = "author", required = false) String customAuthor) {
+            @RequestParam(value = "author", required = false) String customAuthor,
+            @RequestParam(value = "convertToAmerican", required = false, defaultValue = "false") boolean convertToAmerican) {
         if (file == null || file.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
         }
@@ -59,7 +60,7 @@ public class UploadController {
             }
 
             String author = customAuthor != null && !customAuthor.isBlank() ? customAuthor.trim() : null;
-            Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs);
+            Book book = bookService.createBookFromParagraphs(detectedTitle, author, paragraphs, convertToAmerican);
 
             // Generate description + cover art asynchronously — doesn't block the response
             // Pass first 100 paragraphs so AI can skip past metadata headers and find prose

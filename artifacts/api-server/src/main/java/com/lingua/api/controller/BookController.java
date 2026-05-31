@@ -242,6 +242,7 @@ public class BookController {
         m.put("description", b.getDescription());
         boolean hasCover = b.getCoverImage() != null && b.getCoverImage().length > 0;
         m.put("coverImageUrl", hasCover ? "/api/books/" + b.getId() + "/cover" : null);
+        m.put("convertBritishToAmerican", b.isConvertBritishToAmerican());
         return m;
     }
 }

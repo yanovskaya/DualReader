@@ -56,4 +56,7 @@ public class Book {
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
+
+    @Column(name = "convert_british_to_american", nullable = false)
+    private boolean convertBritishToAmerican = false;
 }
