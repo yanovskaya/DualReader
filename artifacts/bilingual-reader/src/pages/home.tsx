@@ -345,6 +345,12 @@ export default function Home() {
       </main>
 
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}`}</style>
+
+      <footer style={{ textAlign: "right", padding: "8px 16px 12px" }}>
+        <span style={{ fontSize: 11, color: "rgba(0,0,0,0.25)", fontFamily: "monospace", userSelect: "none" }}>
+          build {new Date(__BUILD_TIME__).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </footer>
     </div>
   );
 }
