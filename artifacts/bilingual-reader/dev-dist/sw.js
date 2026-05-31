@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-bfe899e4'], (function (workbox) { 'use strict';
+define(['./workbox-ebf8facd'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -82,15 +82,12 @@ define(['./workbox-bfe899e4'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.c785qr84jkg"
+    "revision": "0.5qo7vdfs19"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/\/api\/.*/, new workbox.NetworkOnly(), 'POST');
-  workbox.registerRoute(/\/api\/.*/, new workbox.NetworkOnly(), 'PUT');
-  workbox.registerRoute(/\/api\/.*/, new workbox.NetworkOnly(), 'DELETE');
   workbox.registerRoute(/\/api\/books\/\d+\/paragraphs(\?.*)?$/, new workbox.CacheFirst({
     "cacheName": "paragraphs-cache",
     plugins: [new workbox.ExpirationPlugin({
