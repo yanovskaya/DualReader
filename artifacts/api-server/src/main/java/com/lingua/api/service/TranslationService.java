@@ -70,10 +70,13 @@ public class TranslationService {
 
                 List<Map<String, String>> messages = List.of(
                         Map.of("role", "system", "content",
-                                "You are a literary translator. Translate the following English paragraphs into Russian. " +
-                                "Preserve the style and tone of the original text. Each paragraph is numbered with [N]. " +
-                                "Return ONLY the translated paragraphs in the same numbered format [N], one per line pair. " +
-                                "Do not add explanations or notes."),
+                                "You are a translator. Translate the following English paragraphs into Russian. " +
+                                "Stay as close to the original wording as possible while keeping the Russian grammatically natural and readable. " +
+                                "Do NOT paraphrase, summarize, expand, or add anything not present in the source. " +
+                                "Translate every word; omit nothing. " +
+                                "Each paragraph is numbered with [N]. " +
+                                "Return ONLY the translated paragraphs in the same numbered format [N]. " +
+                                "No explanations, no notes, no additions."),
                         Map.of("role", "user", "content", textsToTranslate.toString())
                 );
 
