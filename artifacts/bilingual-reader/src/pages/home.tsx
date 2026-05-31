@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useListBooks, getListBooksQueryKey } from "@workspace/api-client-react";
+import { useListBooks, useDeleteBook, getListBooksQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { Plus, WifiOff, BookOpen, ArrowRight, Clock, ChevronDown, ChevronUp } from "lucide-react";
-import { saveBook, loadAllBooks } from "@/lib/idb";
+import { Plus, WifiOff, BookOpen, ArrowRight, Clock, ChevronDown, ChevronUp, Trash2, Loader2 } from "lucide-react";
+import { saveBook, loadAllBooks, deleteBookCache } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Book } from "@workspace/api-client-react/src/generated/api.schemas";
 import { BookCoverArt } from "@/components/book-cover-art";
@@ -23,7 +24,27 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
   const [coverHovered, setCoverHovered] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
+
+  const { mutate: deleteBook, isPending: isDeleting } = useDeleteBook({
+    mutation: {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListBooksQueryKey() }),
+    },
+  });
+
+  function handleDelete(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    if (!confirming) { setConfirming(true); return; }
+    deleteBookCache(book.id).catch(() => {});
+    deleteBook({ id: book.id });
+  }
+
+  function handleCancelDelete(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    setConfirming(false);
+  }
 
   const status = getStatusLabel((book as Book).translationStatus);
   const progress = (book.totalParagraphs ?? 0) > 0
@@ -148,6 +169,71 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
           background: "linear-gradient(to right,rgba(0,0,0,0.4),transparent)",
           pointerEvents: "none",
         }} />
+
+        {/* Delete button — top-left, visible on hover */}
+        {coverHovered && !isDeleting && (
+          <div style={{ position: "absolute", top: 12, left: 14, zIndex: 10 }}>
+            {!confirming ? (
+              <button
+                onClick={handleDelete}
+                title="Удалить"
+                style={{
+                  width: 32, height: 32, borderRadius: 8,
+                  border: "none", background: "rgba(0,0,0,0.55)",
+                  color: "rgba(255,255,255,0.75)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  backdropFilter: "blur(4px)", transition: "background 0.15s, color 0.15s",
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.85)";
+                  (e.currentTarget as HTMLElement).style.color = "#fff";
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.55)";
+                  (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.75)";
+                }}
+              >
+                <Trash2 size={15} />
+              </button>
+            ) : (
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={handleDelete}
+                  style={{
+                    padding: "5px 10px", fontSize: 12, fontWeight: 600,
+                    borderRadius: 8, border: "none",
+                    background: "rgba(239,68,68,0.9)", color: "#fff",
+                    cursor: "pointer", fontFamily: "system-ui,sans-serif",
+                  }}
+                >
+                  Удалить
+                </button>
+                <button
+                  onClick={handleCancelDelete}
+                  style={{
+                    padding: "5px 10px", fontSize: 12, fontWeight: 600,
+                    borderRadius: 8, border: "none",
+                    background: "rgba(0,0,0,0.55)", color: "#fff",
+                    cursor: "pointer", fontFamily: "system-ui,sans-serif",
+                    backdropFilter: "blur(4px)",
+                  }}
+                >
+                  Отмена
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Deleting spinner */}
+        {isDeleting && (
+          <div style={{
+            position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10,
+          }}>
+            <Loader2 size={28} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
+          </div>
+        )}
       </div>
 
       {/* ── Metadata (outside cover click zone) ── */}
