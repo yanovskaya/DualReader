@@ -43,6 +43,14 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="flex-1 flex flex-col">
         {children}
       </main>
+
+      <footer className="border-t border-border/30 py-3">
+        <div className="container mx-auto max-w-5xl px-4 flex justify-end">
+          <span className="text-[11px] text-muted-foreground/50 select-none tabular-nums">
+            build {new Date(__BUILD_TIME__).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
