@@ -274,12 +274,17 @@ public class CoverService {
             "vibrant rich colors, sharp crisp detail, clean composition, " +
             "soft luminous lighting, painterly brushwork with clean edges, " +
             "highly detailed faces and setting, cinematic atmosphere. " +
+            "Characters must be beautiful and visually attractive — elegant features, " +
+            "graceful expressions, pleasant and appealing to look at. " +
+            "Emotional intensity through posture and eyes, NOT through scowling or distorted faces. " +
             "Portrait orientation (2:3 ratio). No text, no words, no letters, no titles, no watermarks.";
 
         String ageGuard =
             "IMPORTANT: All characters must look their stated age — if 17 or 18 years old, " +
             "they are fully mature teenagers/young adults, NOT children. " +
-            "Do NOT depict them as younger than their age.";
+            "Do NOT depict them as younger than their age. " +
+            "Characters must be attractive and pleasant-looking — NO ugly, grotesque, or angry faces. " +
+            "Convey emotion through subtle expression and body language, keeping faces beautiful.";
 
         // Best: visual brief with character names and scene details
         if (visualBrief != null && !visualBrief.isBlank()) {
