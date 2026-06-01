@@ -652,12 +652,17 @@ export default function ReaderPage() {
     if (pendingScrollId === null) return;
     const target = allParagraphs.find(p => p.id === pendingScrollId);
     if (!target) return;
-    const el = document.getElementById(`para-${pendingScrollId}`);
-    const container = enRef.current;
-    if (el && container) {
-      container.scrollTo({ top: Math.max(0, offsetInContainer(el, container) - 12), behavior: "smooth" });
-    }
-    setPendingScrollId(null);
+    const id = pendingScrollId;
+    const raf = requestAnimationFrame(() => {
+      const el = document.getElementById(`para-${id}`);
+      const container = enRef.current;
+      if (!el || !container) return;
+      container.scrollTop = Math.max(0, offsetInContainer(el, container) - 12);
+      const ru = ruRef.current;
+      if (ru) ru.scrollTop = syncRuToEn(container, ru);
+      setPendingScrollId(null);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [allParagraphs, pendingScrollId]);
 
   // ── Paragraph position cache ────────────────────────────────────────────────
