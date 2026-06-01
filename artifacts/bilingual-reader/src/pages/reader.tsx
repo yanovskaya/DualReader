@@ -327,8 +327,6 @@ interface ParaPos {
   id: number;
   enTop: number;
   enBottom: number;
-  ruTop: number;
-  ruBottom: number;
 }
 
 function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
@@ -336,35 +334,14 @@ function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
 }
 
 /**
- * Paragraph-aligned sync: find the paragraph at the top of EN viewport,
- * scroll RU so that same paragraph is at the top (preserving intra-paragraph fraction).
- * Falls back to proportional if no paragraph data is available.
+ * Sync RU by content fraction: en.scrollTop/en.scrollHeight → ru.scrollTop/ru.scrollHeight.
+ * Both panels show the same relative position in the total content, so the same
+ * number of lines scrolls by visually (font sizes are proportional, content is the same).
  */
-function paragraphRuSync(en: HTMLElement, ru: HTMLElement, paraPositions: ParaPos[]): number {
-  const enScrollTop = en.scrollTop;
-
-  if (paraPositions.length === 0) {
-    const enS = en.scrollHeight - en.clientHeight;
-    const ruS = ru.scrollHeight - ru.clientHeight;
-    return enS > 0 ? (enScrollTop / enS) * ruS : 0;
-  }
-
-  // Find the first paragraph whose bottom is below the current scroll position
-  const cur = paraPositions.find(p => p.enBottom > enScrollTop + 4);
-  if (!cur) {
-    // Past all known paragraphs — align to end
-    return ru.scrollHeight - ru.clientHeight;
-  }
-
-  const paraEnHeight = cur.enBottom - cur.enTop;
-  const fraction = paraEnHeight > 0 ? (enScrollTop - cur.enTop) / paraEnHeight : 0;
-  const paraRuHeight = cur.ruBottom - cur.ruTop;
-
-  return cur.ruTop + fraction * paraRuHeight;
-}
-
-function clampRu(ru: HTMLElement, pos: number): number {
-  return Math.max(0, Math.min(ru.scrollHeight - ru.clientHeight, pos));
+function syncRuToEn(en: HTMLElement, ru: HTMLElement): number {
+  if (en.scrollHeight <= 0) return 0;
+  const fraction = en.scrollTop / en.scrollHeight;
+  return Math.max(0, Math.min(ru.scrollHeight - ru.clientHeight, fraction * ru.scrollHeight));
 }
 
 // ── Main Reader ────────────────────────────────────────────────────────────────
@@ -464,8 +441,6 @@ export default function ReaderPage() {
   const ruRef = useRef<HTMLDivElement>(null);
 
   // ── Scroll sync state ──────────────────────────────────────────────────────
-  const ruOffset = useRef(0);
-  const lastProgRuWrite = useRef(0);
   const paraPositions = useRef<ParaPos[]>([]);
 
   // DOM fallback throttle for paragraph position tracking
@@ -608,7 +583,6 @@ export default function ReaderPage() {
   // Navigate to a chapter
   const navigateToChapter = useCallback((paragraphId: number, position: number) => {
     const neededBatch = Math.ceil((position + 1) / PAGE_SIZE);
-    ruOffset.current = 0;
     setPendingScrollId(paragraphId);
     setCurrentBatch(prev => Math.max(prev, neededBatch));
   }, []);
