@@ -61,43 +61,63 @@ public class TranslationService {
                     batch = americanizeBatch(batch);
                 }
 
-                // ── Step 2: Translate to Russian ──────────────────────────────────────
-                StringBuilder textsToTranslate = new StringBuilder();
-                for (int j = 0; j < batch.size(); j++) {
-                    textsToTranslate.append("[").append(j + 1).append("] ").append(batch.get(j).getOriginalText());
-                    if (j < batch.size() - 1) textsToTranslate.append("\n\n");
-                }
-
-                List<Map<String, String>> messages = List.of(
-                        Map.of("role", "system", "content",
-                                "You are a translator. Translate the following English paragraphs into Russian. " +
-                                "Stay as close to the original wording as possible while keeping the Russian grammatically natural and readable. " +
-                                "Do NOT paraphrase, summarize, expand, or add anything not present in the source. " +
-                                "Translate every word; omit nothing. " +
-                                "Each paragraph is numbered with [N]. " +
-                                "Return ONLY the translated paragraphs in the same numbered format [N]. " +
-                                "No explanations, no notes, no additions."),
-                        Map.of("role", "user", "content", textsToTranslate.toString())
-                );
-
-                String translationText = openAi.complete("gpt-4.1-mini", 8192, messages);
-
-                Map<Integer, String> translationMap = new HashMap<>();
-                for (String line : translationText.split("\n\n+")) {
-                    Matcher m = Pattern.compile("^\\[(\\d+)\\]\\s*([\\s\\S]+)").matcher(line.trim());
-                    if (m.find()) {
-                        translationMap.put(Integer.parseInt(m.group(1)), m.group(2).trim());
+                // ── Step 2: Translate to Russian (with retry) ─────────────────────────
+                String translationText = null;
+                int[] backoffMs = {2_000, 5_000, 10_000};
+                for (int attempt = 0; attempt <= backoffMs.length; attempt++) {
+                    try {
+                        StringBuilder textsToTranslate = new StringBuilder();
+                        for (int j = 0; j < batch.size(); j++) {
+                            textsToTranslate.append("[").append(j + 1).append("] ").append(batch.get(j).getOriginalText());
+                            if (j < batch.size() - 1) textsToTranslate.append("\n\n");
+                        }
+                        List<Map<String, String>> messages = List.of(
+                                Map.of("role", "system", "content",
+                                        "You are a translator. Translate the following English paragraphs into Russian. " +
+                                        "Stay as close to the original wording as possible while keeping the Russian grammatically natural and readable. " +
+                                        "Do NOT paraphrase, summarize, expand, or add anything not present in the source. " +
+                                        "Translate every word; omit nothing. " +
+                                        "Each paragraph is numbered with [N]. " +
+                                        "Return ONLY the translated paragraphs in the same numbered format [N]. " +
+                                        "No explanations, no notes, no additions."),
+                                Map.of("role", "user", "content", textsToTranslate.toString())
+                        );
+                        translationText = openAi.complete("gpt-4.1-mini", 8192, messages);
+                        break; // success
+                    } catch (Exception ex) {
+                        if (attempt < backoffMs.length) {
+                            log.warn("Translation batch {}/{} attempt {} failed: {} — retrying in {}ms",
+                                    i / batchSize + 1, (untranslated.size() + batchSize - 1) / batchSize,
+                                    attempt + 1, ex.getMessage(), backoffMs[attempt]);
+                            Thread.sleep(backoffMs[attempt]);
+                        } else {
+                            log.error("Translation batch {}/{} failed after all retries — skipping batch: {}",
+                                    i / batchSize + 1, (untranslated.size() + batchSize - 1) / batchSize, ex.getMessage());
+                        }
                     }
                 }
 
-                for (int j = 0; j < batch.size(); j++) {
-                    Paragraph paragraph = batch.get(j);
-                    String translation = translationMap.getOrDefault(j + 1, translationText);
-                    paragraph.setTranslatedText(translation);
-                    paragraph.setTranslated(true);
-                    paragraphRepo.save(paragraph);
-                    translated++;
+                // ── Step 3: Parse and save ────────────────────────────────────────────
+                if (translationText != null) {
+                    Map<Integer, String> translationMap = new HashMap<>();
+                    for (String line : translationText.split("\n\n+")) {
+                        Matcher m = Pattern.compile("^\\[(\\d+)\\]\\s*([\\s\\S]+)").matcher(line.trim());
+                        if (m.find()) {
+                            translationMap.put(Integer.parseInt(m.group(1)), m.group(2).trim());
+                        }
+                    }
+                    for (int j = 0; j < batch.size(); j++) {
+                        Paragraph paragraph = batch.get(j);
+                        String translation = translationMap.get(j + 1);
+                        if (translation != null && !translation.isBlank()) {
+                            paragraph.setTranslatedText(translation);
+                            paragraph.setTranslated(true);
+                            paragraphRepo.save(paragraph);
+                            translated++;
+                        }
+                    }
                 }
+                // if translationText == null (all retries exhausted) — skip batch, continue
 
                 book = bookRepo.findById(bookId).orElse(book);
                 book.setTranslatedParagraphs(translated);
