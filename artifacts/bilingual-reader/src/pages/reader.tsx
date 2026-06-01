@@ -333,15 +333,10 @@ function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
   return el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
 }
 
-/**
- * Sync RU by content fraction: en.scrollTop/en.scrollHeight → ru.scrollTop/ru.scrollHeight.
- * Both panels show the same relative position in the total content, so the same
- * number of lines scrolls by visually (font sizes are proportional, content is the same).
- */
 function syncRuToEn(en: HTMLElement, ru: HTMLElement): number {
   if (en.scrollHeight <= 0) return 0;
-  const fraction = en.scrollTop / en.scrollHeight;
-  return Math.max(0, Math.min(ru.scrollHeight - ru.clientHeight, fraction * ru.scrollHeight));
+  const ruPos = en.scrollTop * (ru.scrollHeight / en.scrollHeight);
+  return Math.max(0, Math.min(ru.scrollHeight - ru.clientHeight, ruPos));
 }
 
 // ── Main Reader ────────────────────────────────────────────────────────────────
@@ -367,7 +362,7 @@ export default function ReaderPage() {
 
   // Paragraph-ID based restore: null = nothing pending, number = scroll to this paragraph
   const [pendingRestoreId, setPendingRestoreId] = useState<number | null>(savedBookmark?.paragraphId ?? null);
-  const pendingRestoreRuOffset = useRef<number | null>(savedBookmark?.ruOffset ?? null);
+
   const pendingRestoreParagraphOffset = useRef<number>(savedBookmark?.paragraphOffset ?? 0);
 
   // True once the restore scroll has executed (or was skipped). Prevents a late
@@ -412,7 +407,6 @@ export default function ReaderPage() {
             // Server is ahead — restore to the server position
             setPendingRestoreId(serverBm.paragraphId);
             pendingRestoreParagraphOffset.current = serverBm.paragraphOffset ?? 0;
-            pendingRestoreRuOffset.current = serverBm.ruOffset ?? null;
             const neededBatch = Math.ceil((serverBm.paragraphPosition + 1) / PAGE_SIZE);
             setCurrentBatch(prev => Math.max(prev, neededBatch));
           }
@@ -622,15 +616,8 @@ export default function ReaderPage() {
       const top = offsetInContainer(el, container);
       const withinPara = pendingRestoreParagraphOffset.current * el.offsetHeight;
       container.scrollTop = Math.max(0, top + withinPara - 12);
-      if (pendingRestoreRuOffset.current !== null) {
-        ruOffset.current = pendingRestoreRuOffset.current;
-        pendingRestoreRuOffset.current = null;
-      }
       const ru = ruRef.current;
-      if (ru) {
-        lastProgRuWrite.current = performance.now();
-        ru.scrollTop = clampRu(ru, proportionalRuSync(container, ru) + ruOffset.current);
-      }
+      if (ru) ru.scrollTop = syncRuToEn(container, ru);
       // Seed firstVisibleParaRef so bookmark button works immediately after restore
       const restoredPara = allParagraphs.find(p => p.id === paragraphId);
       if (restoredPara != null && restoredPara.position != null) {
@@ -655,7 +642,7 @@ export default function ReaderPage() {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      ru.scrollTop = clampRu(ru, proportionalRuSync(en, ru) + ruOffset.current);
+      ru.scrollTop = syncRuToEn(en, ru);
     }, 50);
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -731,20 +718,11 @@ export default function ReaderPage() {
     // Sync RU panel
     const r = ruRef.current;
     if (!r) return;
-    const target = clampRu(r, proportionalRuSync(en, r) + ruOffset.current);
+    const target = syncRuToEn(en, r);
     if (r.scrollTop === target) return;
-    lastProgRuWrite.current = performance.now();
     r.scrollTop = target;
   }, []);
 
-  // ── RU scroll handler ──────────────────────────────────────────────────────
-  const handleRuScroll = useCallback(() => {
-    if (performance.now() - lastProgRuWrite.current < 100) return;
-    const ru = ruRef.current;
-    const en = enRef.current;
-    if (!ru || !en) return;
-    ruOffset.current = ru.scrollTop - proportionalRuSync(en, ru);
-  }, []);
 
   // ── Set bookmark manually ──────────────────────────────────────────────────
   const setBookmarkNow = useCallback(() => {
@@ -774,7 +752,6 @@ export default function ReaderPage() {
       paragraphId: para.id,
       paragraphPosition: para.position,
       paragraphOffset: para.paragraphOffset,
-      ruOffset: ruOffset.current,
     };
     saveBookmark(bookId, bm);
     saveBookmarkToServer(bookId, bm);
