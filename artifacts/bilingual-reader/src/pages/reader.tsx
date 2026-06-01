@@ -615,7 +615,12 @@ export default function ReaderPage() {
       const withinPara = pendingRestoreParagraphOffset.current * el.offsetHeight;
       container.scrollTop = Math.max(0, top + withinPara - 12);
       const ru = ruRef.current;
-      if (ru) ru.scrollTop = syncRuToEn(container, ru);
+      if (ru) {
+        const ruEl = ru.querySelector(`[data-ru-para="${paragraphId}"]`) as HTMLElement | null;
+        if (ruEl) {
+          ru.scrollTop = Math.max(0, ruEl.offsetTop - 12);
+        }
+      }
       // Seed firstVisibleParaRef so bookmark button works immediately after restore
       const restoredPara = allParagraphs.find(p => p.id === paragraphId);
       if (restoredPara != null && restoredPara.position != null) {
@@ -652,12 +657,19 @@ export default function ReaderPage() {
     if (!target) return;
     const id = pendingScrollId;
     const raf = requestAnimationFrame(() => {
-      const el = document.getElementById(`para-${id}`);
-      const container = enRef.current;
-      if (!el || !container) return;
-      container.scrollTop = Math.max(0, offsetInContainer(el, container) - 12);
-      const ru = ruRef.current;
-      if (ru) ru.scrollTop = syncRuToEn(container, ru);
+      const enEl = document.getElementById(`para-${id}`);
+      const enContainer = enRef.current;
+      const ruContainer = ruRef.current;
+      if (!enEl || !enContainer) return;
+      enContainer.scrollTop = Math.max(0, offsetInContainer(enEl, enContainer) - 12);
+      // Scroll RU to the matching paragraph directly (don't use pixel sync —
+      // EN content is taller so en.scrollTop > ru max for later chapters)
+      if (ruContainer) {
+        const ruEl = ruContainer.querySelector(`[data-ru-para="${id}"]`) as HTMLElement | null;
+        if (ruEl) {
+          ruContainer.scrollTop = Math.max(0, ruEl.offsetTop - 12);
+        }
+      }
       setPendingScrollId(null);
     });
     return () => cancelAnimationFrame(raf);
