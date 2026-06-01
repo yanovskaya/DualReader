@@ -1021,13 +1021,11 @@ export default function ReaderPage() {
 
             <div
               ref={ruRef}
-              onScroll={handleRuScroll}
               onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
               style={{
                 flex: 3.75,
-                overflowY: "auto",
+                overflowY: "hidden",
                 overflowX: "hidden",
-                WebkitOverflowScrolling: "touch" as never,
               }}
             >
               {displayParagraphs.map(p => (
