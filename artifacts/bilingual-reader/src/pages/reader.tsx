@@ -1003,8 +1003,9 @@ export default function ReaderPage() {
               onClick={() => { if (panel.kind !== "hidden") closePanel(); }}
               style={{
                 flex: 3.75,
-                overflowY: "hidden",
+                overflowY: "auto",
                 overflowX: "hidden",
+                WebkitOverflowScrolling: "touch" as never,
               }}
             >
               {displayParagraphs.map(p => (
