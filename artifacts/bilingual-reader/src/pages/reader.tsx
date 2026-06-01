@@ -334,9 +334,7 @@ function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
 }
 
 function syncRuToEn(en: HTMLElement, ru: HTMLElement): number {
-  if (en.scrollHeight <= 0) return 0;
-  const ruPos = en.scrollTop * (ru.scrollHeight / en.scrollHeight);
-  return Math.max(0, Math.min(ru.scrollHeight - ru.clientHeight, ruPos));
+  return Math.max(0, Math.min(ru.scrollHeight - ru.clientHeight, en.scrollTop));
 }
 
 // ── Main Reader ────────────────────────────────────────────────────────────────
