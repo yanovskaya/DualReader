@@ -116,8 +116,39 @@ public class TranslationService {
                             translated++;
                         }
                     }
+                } else {
+                    // All retries exhausted — fall back to one paragraph at a time
+                    log.warn("Falling back to single-paragraph translation for batch starting at position {}",
+                            batch.get(0).getPosition());
+                    for (Paragraph paragraph : batch) {
+                        try {
+                            String singleText = "[1] " + paragraph.getOriginalText();
+                            List<Map<String, String>> singleMsg = List.of(
+                                    Map.of("role", "system", "content",
+                                            "You are a translator. Translate the English paragraph into Russian. " +
+                                            "Stay close to the original wording. Return only [1] followed by the translation."),
+                                    Map.of("role", "user", "content", singleText)
+                            );
+                            String result = openAi.complete("gpt-4.1-mini", 2048, singleMsg);
+                            Matcher m = Pattern.compile("^\\[1\\]\\s*([\\s\\S]+)").matcher(result.trim());
+                            String tr = m.find() ? m.group(1).trim() : result.trim();
+                            if (!tr.isBlank()) {
+                                paragraph.setTranslatedText(tr);
+                                paragraph.setTranslated(true);
+                                paragraphRepo.save(paragraph);
+                                translated++;
+                            }
+                        } catch (Exception ex) {
+                            log.warn("Single-paragraph translation failed at position {} — skipping: {}",
+                                    paragraph.getPosition(), ex.getMessage());
+                            // Mark as translated with original text so we don't get stuck
+                            paragraph.setTranslatedText("[" + paragraph.getOriginalText() + "]");
+                            paragraph.setTranslated(true);
+                            paragraphRepo.save(paragraph);
+                            translated++;
+                        }
+                    }
                 }
-                // if translationText == null (all retries exhausted) — skip batch, continue
 
                 book = bookRepo.findById(bookId).orElse(book);
                 book.setTranslatedParagraphs(translated);
