@@ -327,17 +327,40 @@ interface ParaPos {
   id: number;
   enTop: number;
   enBottom: number;
+  ruTop: number;
+  ruBottom: number;
 }
 
 function offsetInContainer(el: HTMLElement, container: HTMLElement): number {
   return el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
 }
 
-/** Simple proportional sync: EN at X% → RU at X%. No paragraph snapping. */
-function proportionalRuSync(en: HTMLElement, ru: HTMLElement): number {
-  const enS = en.scrollHeight - en.clientHeight;
-  const ruS = ru.scrollHeight - ru.clientHeight;
-  return enS > 0 ? (en.scrollTop / enS) * ruS : 0;
+/**
+ * Paragraph-aligned sync: find the paragraph at the top of EN viewport,
+ * scroll RU so that same paragraph is at the top (preserving intra-paragraph fraction).
+ * Falls back to proportional if no paragraph data is available.
+ */
+function paragraphRuSync(en: HTMLElement, ru: HTMLElement, paraPositions: ParaPos[]): number {
+  const enScrollTop = en.scrollTop;
+
+  if (paraPositions.length === 0) {
+    const enS = en.scrollHeight - en.clientHeight;
+    const ruS = ru.scrollHeight - ru.clientHeight;
+    return enS > 0 ? (enScrollTop / enS) * ruS : 0;
+  }
+
+  // Find the first paragraph whose bottom is below the current scroll position
+  const cur = paraPositions.find(p => p.enBottom > enScrollTop + 4);
+  if (!cur) {
+    // Past all known paragraphs — align to end
+    return ru.scrollHeight - ru.clientHeight;
+  }
+
+  const paraEnHeight = cur.enBottom - cur.enTop;
+  const fraction = paraEnHeight > 0 ? (enScrollTop - cur.enTop) / paraEnHeight : 0;
+  const paraRuHeight = cur.ruBottom - cur.ruTop;
+
+  return cur.ruTop + fraction * paraRuHeight;
 }
 
 function clampRu(ru: HTMLElement, pos: number): number {
