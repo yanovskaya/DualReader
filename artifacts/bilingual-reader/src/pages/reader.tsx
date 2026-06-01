@@ -618,7 +618,7 @@ export default function ReaderPage() {
       if (ru) {
         const ruEl = ru.querySelector(`[data-ru-para="${paragraphId}"]`) as HTMLElement | null;
         if (ruEl) {
-          ru.scrollTop = Math.max(0, ruEl.offsetTop - 12);
+          ru.scrollTop = Math.max(0, offsetInContainer(ruEl, ru) - 12);
         }
       }
       // Seed firstVisibleParaRef so bookmark button works immediately after restore
@@ -662,12 +662,11 @@ export default function ReaderPage() {
       const ruContainer = ruRef.current;
       if (!enEl || !enContainer) return;
       enContainer.scrollTop = Math.max(0, offsetInContainer(enEl, enContainer) - 12);
-      // Scroll RU to the matching paragraph directly (don't use pixel sync —
-      // EN content is taller so en.scrollTop > ru max for later chapters)
+      // Scroll RU to the matching paragraph directly
       if (ruContainer) {
         const ruEl = ruContainer.querySelector(`[data-ru-para="${id}"]`) as HTMLElement | null;
         if (ruEl) {
-          ruContainer.scrollTop = Math.max(0, ruEl.offsetTop - 12);
+          ruContainer.scrollTop = Math.max(0, offsetInContainer(ruEl, ruContainer) - 12);
         }
       }
       setPendingScrollId(null);
