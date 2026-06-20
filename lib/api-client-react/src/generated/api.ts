@@ -22,6 +22,7 @@ import type {
   CreateBookBody,
   DictionaryEntry,
   GetBookChapters200,
+  GetChapterIllustrations200,
   HealthStatus,
   ListParagraphsParams,
   LookupWordParams,
@@ -618,6 +619,98 @@ export function useGetBookChapters<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetBookChaptersQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get chapter illustration URLs for a book
+ */
+export const getGetChapterIllustrationsUrl = (id: number) => {
+  return `/api/books/${id}/chapter-illustrations`;
+};
+
+export const getChapterIllustrations = async (
+  id: number,
+  options?: RequestInit,
+): Promise<GetChapterIllustrations200> => {
+  return customFetch<GetChapterIllustrations200>(
+    getGetChapterIllustrationsUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetChapterIllustrationsQueryKey = (id: number) => {
+  return [`/api/books/${id}/chapter-illustrations`] as const;
+};
+
+export const getGetChapterIllustrationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getChapterIllustrations>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChapterIllustrations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetChapterIllustrationsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getChapterIllustrations>>
+  > = ({ signal }) =>
+    getChapterIllustrations(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getChapterIllustrations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetChapterIllustrationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getChapterIllustrations>>
+>;
+export type GetChapterIllustrationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get chapter illustration URLs for a book
+ */
+
+export function useGetChapterIllustrations<
+  TData = Awaited<ReturnType<typeof getChapterIllustrations>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChapterIllustrations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetChapterIllustrationsQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -120,6 +120,22 @@ export const GetBookChaptersResponse = zod.object({
 });
 
 /**
+ * @summary Get chapter illustration URLs for a book
+ */
+export const GetChapterIllustrationsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetChapterIllustrationsResponse = zod.object({
+  illustrations: zod.array(
+    zod.object({
+      paragraphId: zod.number(),
+      imageUrl: zod.string(),
+    }),
+  ),
+});
+
+/**
  * @summary Search paragraphs of a book by text
  */
 export const SearchBookParams = zod.object({

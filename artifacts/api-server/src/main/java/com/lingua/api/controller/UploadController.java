@@ -4,6 +4,7 @@ import com.lingua.api.model.Book;
 import com.lingua.api.service.BookService;
 import com.lingua.api.service.CoverService;
 import com.lingua.api.service.EpubParser;
+import com.lingua.api.service.IllustrationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +21,7 @@ public class UploadController {
     private final BookService bookService;
     private final CoverService coverService;
     private final EpubParser epubParser;
+    private final IllustrationService illustrationService;
 
     // POST /books/upload
     @PostMapping("/books/upload")
@@ -66,6 +68,9 @@ public class UploadController {
             // Pass first 100 paragraphs so AI can skip past metadata headers and find prose
             List<String> excerpt = paragraphs.subList(0, Math.min(100, paragraphs.size()));
             coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor(), excerpt);
+
+            // Generate chapter illustrations asynchronously
+            illustrationService.scheduleForBook(book.getId());
 
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", book.getId());

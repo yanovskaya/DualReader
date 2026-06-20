@@ -7,6 +7,7 @@ import {
   getGetTranslationStatusQueryKey,
   useGetBookChapters,
   getGetBookChaptersQueryKey,
+  useGetChapterIllustrations,
   useLookupWord,
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
@@ -502,6 +503,19 @@ export default function ReaderPage() {
     query: { enabled: !!bookId && !!bookOnline, queryKey: getGetBookChaptersQueryKey(bookId) },
   });
 
+  const { data: illustrationsData } = useGetChapterIllustrations(bookId, {
+    query: {
+      enabled: !!bookId && !!bookOnline,
+      refetchInterval: 30000, // re-check as illustrations generate
+    },
+  });
+  // Map from paragraphId → imageUrl for fast lookup
+  const illustrationMap = useMemo(() => {
+    const map = new Map<number, string>();
+    illustrationsData?.illustrations?.forEach(i => map.set(i.paragraphId, i.imageUrl));
+    return map;
+  }, [illustrationsData]);
+
   // Background prefetch ALL paragraph batches for offline use
   useEffect(() => {
     if (!bookOnline || !bookId) return;
@@ -953,21 +967,46 @@ export default function ReaderPage() {
             </div>
           )}
 
-          {displayParagraphs.map(p => (
-            <div key={p.id} id={`para-${p.id}`}>
-              <BookParagraph
-                paragraph={p}
-                mode="en"
-                onWordClick={handleWordClick}
-                colors={colors}
-                fontSize={settings.fontSize}
-                fontFamily={bodyFont}
-                headingFontFamily={headingFont}
-                lineHeight={lineHeight}
-                textAlign={settings.textAlign}
-              />
-            </div>
-          ))}
+          {displayParagraphs.map(p => {
+            const illustrationUrl = illustrationMap.get(p.id as number);
+            return (
+              <div key={p.id} id={`para-${p.id}`}>
+                {illustrationUrl && (
+                  <div style={{
+                    margin: "8px 0 0",
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    lineHeight: 0,
+                  }}>
+                    <img
+                      src={illustrationUrl}
+                      alt=""
+                      style={{
+                        width: "100%",
+                        maxHeight: 220,
+                        objectFit: "cover",
+                        objectPosition: "center 30%",
+                        display: "block",
+                        opacity: 0.92,
+                      }}
+                      loading="lazy"
+                    />
+                  </div>
+                )}
+                <BookParagraph
+                  paragraph={p}
+                  mode="en"
+                  onWordClick={handleWordClick}
+                  colors={colors}
+                  fontSize={settings.fontSize}
+                  fontFamily={bodyFont}
+                  headingFontFamily={headingFont}
+                  lineHeight={lineHeight}
+                  textAlign={settings.textAlign}
+                />
+              </div>
+            );
+          })}
 
           <div ref={sentinelRef} style={{ height: 1 }} />
 

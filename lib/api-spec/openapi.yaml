@@ -153,6 +153,31 @@ paths:
         "404":
           description: Book not found
 
+  /books/{id}/chapter-illustrations:
+    get:
+      operationId: getChapterIllustrations
+      tags: [books]
+      summary: Get chapter illustration URLs for a book
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of chapter illustrations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [illustrations]
+                properties:
+                  illustrations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ChapterIllustration"
+
   /books/{id}/search:
     get:
       operationId: searchBook
@@ -531,6 +556,17 @@ components:
         - results
         - total
         - query
+
+    ChapterIllustration:
+      type: object
+      properties:
+        paragraphId:
+          type: integer
+        imageUrl:
+          type: string
+      required:
+        - paragraphId
+        - imageUrl
 
     BookStats:
       type: object

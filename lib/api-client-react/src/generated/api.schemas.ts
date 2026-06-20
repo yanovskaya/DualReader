@@ -113,6 +113,11 @@ export interface SearchResults {
   query: string;
 }
 
+export interface ChapterIllustration {
+  paragraphId: number;
+  imageUrl: string;
+}
+
 export interface BookStats {
   bookId: number;
   totalParagraphs: number;
@@ -129,6 +134,10 @@ export type ListParagraphsParams = {
 
 export type GetBookChapters200 = {
   chapters: Chapter[];
+};
+
+export type GetChapterIllustrations200 = {
+  illustrations: ChapterIllustration[];
 };
 
 export type SearchBookParams = {
