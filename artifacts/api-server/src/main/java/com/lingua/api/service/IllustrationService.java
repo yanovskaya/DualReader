@@ -147,22 +147,23 @@ public class IllustrationService {
         }
 
         String prompt = buildIllustrationPrompt(chapterTitle, sceneBrief);
-        return geminiService.generateImage(prompt, "gemini-2.5-flash-image");
+        return geminiService.generateImage(prompt, "gemini-3-pro-image-preview");
     }
 
     private String buildIllustrationPrompt(String chapterTitle, String sceneBrief) {
         String style =
-            "Style: ink and watercolor book illustration, editorial art, " +
-            "muted palette with one accent color, loose expressive linework, " +
-            "atmospheric and literary, wide landscape orientation (16:9). " +
+            "Style: professional digital painting, book illustration art, " +
+            "vibrant rich colors, saturated jewel-toned palette, sharp crisp detail, " +
+            "soft luminous lighting, painterly brushwork, highly detailed setting, " +
+            "cinematic atmosphere, wide landscape orientation (16:9). " +
             "No text, no letters, no watermarks.";
 
         if (sceneBrief != null && !sceneBrief.isBlank()) {
-            return String.format("Interior book illustration. %s. %s", sceneBrief.strip(), style);
+            return String.format("Interior chapter illustration. %s. %s", sceneBrief.strip(), style);
         }
         return String.format(
-            "Interior book illustration for chapter \"%s\". " +
-            "Atmospheric literary scene, moody and evocative. %s",
+            "Interior chapter illustration for \"%s\". " +
+            "Dramatic literary scene, vivid and evocative. %s",
             chapterTitle, style
         );
     }
