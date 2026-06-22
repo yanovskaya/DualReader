@@ -15,7 +15,7 @@ import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark, ImageIcon } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
@@ -424,6 +424,8 @@ export default function ReaderPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showIllustration, setShowIllustration] = useState(false);
+  const [currentChapterParaId, setCurrentChapterParaId] = useState<number | null>(null);
   const [showHeader, setShowHeader] = useState(true);
   const [showTranslations, setShowTranslations] = useState(true);
 
@@ -438,6 +440,12 @@ export default function ReaderPage() {
 
   // DOM fallback throttle for paragraph position tracking
   const domFallbackLastRun = useRef<number>(0);
+
+  // Ref to chapters for use in scroll handler without stale closure
+  const chaptersRef = useRef<Array<{ id: number; position: number }>>([]);
+
+  // Throttle for updating current-chapter state
+  const chapterUpdateThrottle = useRef<number>(0);
 
   // Sentinel div at the bottom of the EN panel to trigger next batch load
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -506,6 +514,7 @@ export default function ReaderPage() {
   const { data: illustrationsData } = useGetChapterIllustrations(bookId, {
     query: {
       enabled: !!bookId && !!bookOnline,
+      queryKey: [`/api/books/${bookId}/chapter-illustrations`],
       refetchInterval: 30000, // re-check as illustrations generate
     },
   });
@@ -743,6 +752,22 @@ export default function ReaderPage() {
       }
     }
 
+    // Update current chapter (throttled to once per 500ms)
+    const now = performance.now();
+    if (now - chapterUpdateThrottle.current > 500) {
+      chapterUpdateThrottle.current = now;
+      const pos = firstVisibleParaRef.current?.position;
+      if (pos != null) {
+        const chs = chaptersRef.current;
+        let best: number | null = null;
+        for (const ch of chs) {
+          if (ch.position <= pos) best = ch.id;
+          else break;
+        }
+        setCurrentChapterParaId(prev => prev === best ? prev : best);
+      }
+    }
+
     // Sync RU panel
     const r = ruRef.current;
     if (!r) return;
@@ -809,6 +834,9 @@ export default function ReaderPage() {
 
   // Current chapter name for the header subtitle
   const chapters = chaptersData?.chapters ?? [];
+
+  // Keep chaptersRef in sync for use inside scroll handler
+  chaptersRef.current = chapters as Array<{ id: number; position: number }>;
 
   if (isLoadingBook) {
     return (
@@ -925,13 +953,27 @@ export default function ReaderPage() {
             {bookmarkSaved && <span>Закладка</span>}
           </button>
 
-          <button onClick={() => { setShowToc(s => !s); setShowSettings(false); setShowSearch(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+          {illustrationMap.size > 0 && (
+            <button
+              onClick={() => { setShowIllustration(s => !s); setShowToc(false); setShowSettings(false); setShowSearch(false); }}
+              title="Иллюстрация главы"
+              style={{
+                height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                borderRadius: "50%", background: showIllustration ? colors.accent + "22" : "transparent",
+                border: "none", cursor: "pointer",
+                color: showIllustration ? colors.accent : colors.muted,
+              }}
+            >
+              <ImageIcon size={17} />
+            </button>
+          )}
+          <button onClick={() => { setShowToc(s => !s); setShowSettings(false); setShowSearch(false); setShowIllustration(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <List size={17} />
           </button>
-          <button onClick={() => { setShowSearch(s => !s); setShowToc(false); setShowSettings(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+          <button onClick={() => { setShowSearch(s => !s); setShowToc(false); setShowSettings(false); setShowIllustration(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Search size={17} />
           </button>
-          <button onClick={() => { setShowSettings(s => !s); setShowToc(false); setShowSearch(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
+          <button onClick={() => { setShowSettings(s => !s); setShowToc(false); setShowSearch(false); setShowIllustration(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <Settings2 size={17} />
           </button>
           <button
@@ -967,46 +1009,21 @@ export default function ReaderPage() {
             </div>
           )}
 
-          {displayParagraphs.map(p => {
-            const illustrationUrl = illustrationMap.get(p.id as number);
-            return (
-              <div key={p.id} id={`para-${p.id}`}>
-                {illustrationUrl && (
-                  <div style={{
-                    margin: "8px 0 0",
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    lineHeight: 0,
-                  }}>
-                    <img
-                      src={illustrationUrl}
-                      alt=""
-                      style={{
-                        width: "100%",
-                        maxHeight: 220,
-                        objectFit: "cover",
-                        objectPosition: "center 30%",
-                        display: "block",
-                        opacity: 0.92,
-                      }}
-                      loading="lazy"
-                    />
-                  </div>
-                )}
-                <BookParagraph
-                  paragraph={p}
-                  mode="en"
-                  onWordClick={handleWordClick}
-                  colors={colors}
-                  fontSize={settings.fontSize}
-                  fontFamily={bodyFont}
-                  headingFontFamily={headingFont}
-                  lineHeight={lineHeight}
-                  textAlign={settings.textAlign}
-                />
-              </div>
-            );
-          })}
+          {displayParagraphs.map(p => (
+            <div key={p.id} id={`para-${p.id}`}>
+              <BookParagraph
+                paragraph={p}
+                mode="en"
+                onWordClick={handleWordClick}
+                colors={colors}
+                fontSize={settings.fontSize}
+                fontFamily={bodyFont}
+                headingFontFamily={headingFont}
+                lineHeight={lineHeight}
+                textAlign={settings.textAlign}
+              />
+            </div>
+          ))}
 
           <div ref={sentinelRef} style={{ height: 1 }} />
 
@@ -1130,6 +1147,95 @@ export default function ReaderPage() {
           setTextAlign={setTextAlign}
         />
       )}
+
+      {/* ── Illustration panel ───────────────────────────────────────── */}
+      {showIllustration && (() => {
+        const ilUrl = currentChapterParaId != null
+          ? illustrationMap.get(currentChapterParaId)
+          : null;
+        const currentChapter = currentChapterParaId != null
+          ? chapters.find((ch: { id: number }) => ch.id === currentChapterParaId)
+          : null;
+        const chapterTitle = (currentChapter as { text?: string } | null)?.text ?? null;
+
+        return (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 35,
+            background: colors.bg + "f0",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            padding: "0 0 env(safe-area-inset-bottom)",
+          }}
+            onClick={() => setShowIllustration(false)}
+          >
+            <div
+              style={{
+                width: "min(92vw, 680px)",
+                background: colors.headerBg,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 16,
+                overflow: "hidden",
+                boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "12px 16px 10px",
+                borderBottom: `1px solid ${colors.border}`,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: colors.muted }}>
+                  Иллюстрация главы
+                </span>
+                <button
+                  onClick={() => setShowIllustration(false)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted, padding: 4, display: "flex" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Image */}
+              {ilUrl ? (
+                <div style={{ lineHeight: 0 }}>
+                  <img
+                    src={ilUrl}
+                    alt={chapterTitle ?? ""}
+                    style={{ width: "100%", maxHeight: "60vh", objectFit: "contain", display: "block" }}
+                  />
+                </div>
+              ) : (
+                <div style={{
+                  padding: "48px 24px",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                  color: colors.muted, textAlign: "center",
+                }}>
+                  <ImageIcon size={32} style={{ opacity: 0.4 }} />
+                  <span style={{ fontSize: 13 }}>
+                    {illustrationMap.size === 0
+                      ? "Иллюстрации ещё генерируются…"
+                      : "Для этой главы иллюстрация ещё не готова"}
+                  </span>
+                </div>
+              )}
+
+              {/* Chapter title */}
+              {chapterTitle && (
+                <div style={{
+                  padding: "10px 16px 14px",
+                  fontSize: 13, color: colors.muted,
+                  borderTop: ilUrl ? `1px solid ${colors.border}` : "none",
+                  fontStyle: "italic",
+                }}>
+                  {chapterTitle}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Dictionary drawer ────────────────────────────────────────── */}
       <DictDrawer panel={panel} colors={colors} onClose={closePanel} />
