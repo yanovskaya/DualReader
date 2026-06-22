@@ -134,12 +134,15 @@ public class IllustrationService {
         // Use GPT to write a concise scene brief — skip if excerpt is empty
         String sceneBrief = null;
         if (!excerpt.isBlank()) {
-            sceneBrief = openAiService.complete("gpt-4.1-nano", 150,
+            sceneBrief = openAiService.complete("gpt-4.1-nano", 200,
                 List.of(
                     Map.of("role", "system", "content",
-                        "You are an art director. Write a short visual scene brief (max 60 words) " +
-                        "for an interior book illustration based on this chapter excerpt. " +
-                        "Describe the setting, mood, and one dramatic moment. Be specific and visual. No character names needed."),
+                        "You are an art director for a book illustration. " +
+                        "Write a visual scene brief (max 80 words) based on this chapter excerpt. " +
+                        "Include: the NAMES of the characters present (e.g. Hermione Granger, Draco Malfoy, Harry Potter), " +
+                        "their exact ages if mentioned (e.g. 17-year-old), physical appearance, " +
+                        "the specific setting, mood, and one dramatic action or emotional moment. " +
+                        "Be concrete and cinematic. Use the actual character names from the text."),
                     Map.of("role", "user", "content",
                         "Chapter: " + chapterTitle + "\n\n" + excerpt.substring(0, Math.min(800, excerpt.length())))
                 )
@@ -154,12 +157,18 @@ public class IllustrationService {
         String style =
             "Style: professional digital painting, book illustration art, " +
             "vibrant rich colors, saturated jewel-toned palette, sharp crisp detail, " +
-            "soft luminous lighting, painterly brushwork, highly detailed setting, " +
+            "soft luminous lighting, painterly brushwork, highly detailed faces and setting, " +
             "cinematic atmosphere, wide landscape orientation (16:9). " +
+            "Characters must be beautiful and visually attractive — elegant features, graceful expressions. " +
             "No text, no letters, no watermarks.";
 
+        String ageGuard =
+            "IMPORTANT: If characters are 17-18 years old, they are fully mature teenagers/young adults, NOT children. " +
+            "All characters must look their stated age and be attractive and pleasant-looking.";
+
         if (sceneBrief != null && !sceneBrief.isBlank()) {
-            return String.format("Interior chapter illustration. %s. %s", sceneBrief.strip(), style);
+            return String.format("Interior chapter illustration. %s. %s %s",
+                    sceneBrief.strip(), ageGuard, style);
         }
         return String.format(
             "Interior chapter illustration for \"%s\". " +

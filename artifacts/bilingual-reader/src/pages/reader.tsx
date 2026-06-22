@@ -1159,80 +1159,75 @@ export default function ReaderPage() {
         const chapterTitle = (currentChapter as { text?: string } | null)?.text ?? null;
 
         return (
-          <div style={{
-            position: "fixed", inset: 0, zIndex: 35,
-            background: colors.bg + "f0",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            padding: "0 0 env(safe-area-inset-bottom)",
-          }}
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 35,
+              background: "#000",
+              display: "flex", flexDirection: "column",
+            }}
             onClick={() => setShowIllustration(false)}
           >
-            <div
+            {/* Close button — top right */}
+            <button
+              onClick={() => setShowIllustration(false)}
               style={{
-                width: "min(92vw, 680px)",
-                background: colors.headerBg,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 16,
-                overflow: "hidden",
-                boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
+                position: "absolute", top: "env(safe-area-inset-top, 12px)", right: 12,
+                zIndex: 2,
+                width: 36, height: 36,
+                borderRadius: "50%",
+                background: "rgba(0,0,0,0.55)",
+                border: "none", cursor: "pointer",
+                color: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
               }}
-              onClick={e => e.stopPropagation()}
             >
-              {/* Close button */}
+              <X size={18} />
+            </button>
+
+            {/* Image — fills the whole screen */}
+            {ilUrl ? (
+              <img
+                src={ilUrl}
+                alt={chapterTitle ?? ""}
+                style={{
+                  width: "100%", height: "100%",
+                  objectFit: "cover",
+                  objectPosition: "center",
+                  display: "block",
+                }}
+                onClick={e => e.stopPropagation()}
+              />
+            ) : (
               <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "12px 16px 10px",
-                borderBottom: `1px solid ${colors.border}`,
+                flex: 1,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: 12, color: "rgba(255,255,255,0.5)", textAlign: "center", padding: 32,
               }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: colors.muted }}>
-                  Иллюстрация главы
+                <ImageIcon size={40} style={{ opacity: 0.4 }} />
+                <span style={{ fontSize: 14 }}>
+                  {illustrationMap.size === 0
+                    ? "Иллюстрации ещё генерируются…"
+                    : "Для этой главы иллюстрация ещё не готова"}
                 </span>
-                <button
-                  onClick={() => setShowIllustration(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted, padding: 4, display: "flex" }}
-                >
-                  <X size={16} />
-                </button>
               </div>
+            )}
 
-              {/* Image */}
-              {ilUrl ? (
-                <div style={{ lineHeight: 0 }}>
-                  <img
-                    src={ilUrl}
-                    alt={chapterTitle ?? ""}
-                    style={{ width: "100%", maxHeight: "60vh", objectFit: "contain", display: "block" }}
-                  />
-                </div>
-              ) : (
-                <div style={{
-                  padding: "48px 24px",
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
-                  color: colors.muted, textAlign: "center",
-                }}>
-                  <ImageIcon size={32} style={{ opacity: 0.4 }} />
-                  <span style={{ fontSize: 13 }}>
-                    {illustrationMap.size === 0
-                      ? "Иллюстрации ещё генерируются…"
-                      : "Для этой главы иллюстрация ещё не готова"}
-                  </span>
-                </div>
-              )}
-
-              {/* Chapter title */}
-              {chapterTitle && (
-                <div style={{
-                  padding: "10px 16px 14px",
-                  fontSize: 13, color: colors.muted,
-                  borderTop: ilUrl ? `1px solid ${colors.border}` : "none",
-                  fontStyle: "italic",
-                }}>
-                  {chapterTitle}
-                </div>
-              )}
-            </div>
+            {/* Chapter title — gradient overlay at the bottom */}
+            {chapterTitle && ilUrl && (
+              <div style={{
+                position: "absolute", bottom: 0, left: 0, right: 0,
+                padding: "48px 20px 28px",
+                background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)",
+                color: "#fff",
+                fontSize: 15, fontStyle: "italic",
+                letterSpacing: "0.01em",
+                paddingBottom: "max(28px, env(safe-area-inset-bottom, 28px))",
+              }}>
+                {chapterTitle}
+              </div>
+            )}
           </div>
         );
       })()}
