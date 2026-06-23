@@ -158,7 +158,7 @@ public class IllustrationService {
             "Style: professional digital painting, book illustration art, " +
             "vibrant rich colors, saturated jewel-toned palette, sharp crisp detail, " +
             "soft luminous lighting, painterly brushwork, highly detailed faces and setting, " +
-            "cinematic atmosphere, wide landscape orientation (16:9). " +
+            "cinematic atmosphere, tall portrait orientation (9:16), vertical composition. " +
             "Characters must be beautiful and visually attractive — elegant features, graceful expressions. " +
             "No text, no letters, no watermarks.";
 
