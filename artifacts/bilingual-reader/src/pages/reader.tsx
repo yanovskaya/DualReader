@@ -638,8 +638,9 @@ export default function ReaderPage() {
       if (!el || !container) return;
       const top = offsetInContainer(el, container);
       const withinPara = pendingRestoreParagraphOffset.current * el.offsetHeight;
-      container.scrollTop = Math.max(0, top + withinPara - 12);
-      lastEnScrollTop.current = container.scrollTop;
+      const newEnTop = Math.max(0, top + withinPara - 12);
+      lastEnScrollTop.current = newEnTop; // set BEFORE to neutralise handleEnScroll delta
+      container.scrollTop = newEnTop;
       const ru = ruRef.current;
       if (ru) {
         const ruEl = ru.querySelector(`[data-ru-para="${paragraphId}"]`) as HTMLElement | null;
@@ -664,14 +665,19 @@ export default function ReaderPage() {
     return () => cancelAnimationFrame(raf);
   }, [allParagraphs, pendingRestoreId, book]);
 
-  // When RU panel becomes visible again, sync its position to current EN position
+  // When RU panel becomes visible again, sync to EN only if RU is still at top
   useEffect(() => {
     if (!showTranslations) return;
     const timer = setTimeout(() => {
       const en = enRef.current;
       const ru = ruRef.current;
       if (!en || !ru) return;
-      ru.scrollTop = syncRuToEn(en, ru);
+      // Always keep lastEnScrollTop in sync so delta calculation is correct
+      lastEnScrollTop.current = en.scrollTop;
+      // Only reset RU position if it hasn't been positioned yet (still at 0)
+      if (ru.scrollTop === 0) {
+        ru.scrollTop = syncRuToEn(en, ru);
+      }
     }, 50);
     return () => clearTimeout(timer);
   }, [showTranslations]);
@@ -687,8 +693,9 @@ export default function ReaderPage() {
       const enContainer = enRef.current;
       const ruContainer = ruRef.current;
       if (!enEl || !enContainer) return;
-      enContainer.scrollTop = Math.max(0, offsetInContainer(enEl, enContainer) - 12);
-      lastEnScrollTop.current = enContainer.scrollTop;
+      const newChTop = Math.max(0, offsetInContainer(enEl, enContainer) - 12);
+      lastEnScrollTop.current = newChTop; // set BEFORE to neutralise handleEnScroll delta
+      enContainer.scrollTop = newChTop;
       // Scroll RU to the matching paragraph directly
       if (ruContainer) {
         const ruEl = ruContainer.querySelector(`[data-ru-para="${id}"]`) as HTMLElement | null;
