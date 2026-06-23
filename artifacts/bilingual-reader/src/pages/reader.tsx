@@ -436,8 +436,8 @@ export default function ReaderPage() {
   const ruRef = useRef<HTMLDivElement>(null);
 
   // ── Scroll sync state ──────────────────────────────────────────────────────
-  // When user manually scrolls RU, detach it from EN sync until EN is scrolled again
-  const ruDetached = useRef(false);
+  // Track last EN scrollTop to compute delta for RU sync
+  const lastEnScrollTop = useRef(0);
   const paraPositions = useRef<ParaPos[]>([]);
 
   // DOM fallback throttle for paragraph position tracking
@@ -639,6 +639,7 @@ export default function ReaderPage() {
       const top = offsetInContainer(el, container);
       const withinPara = pendingRestoreParagraphOffset.current * el.offsetHeight;
       container.scrollTop = Math.max(0, top + withinPara - 12);
+      lastEnScrollTop.current = container.scrollTop;
       const ru = ruRef.current;
       if (ru) {
         const ruEl = ru.querySelector(`[data-ru-para="${paragraphId}"]`) as HTMLElement | null;
@@ -687,6 +688,7 @@ export default function ReaderPage() {
       const ruContainer = ruRef.current;
       if (!enEl || !enContainer) return;
       enContainer.scrollTop = Math.max(0, offsetInContainer(enEl, enContainer) - 12);
+      lastEnScrollTop.current = enContainer.scrollTop;
       // Scroll RU to the matching paragraph directly
       if (ruContainer) {
         const ruEl = ruContainer.querySelector(`[data-ru-para="${id}"]`) as HTMLElement | null;
@@ -770,18 +772,17 @@ export default function ReaderPage() {
       }
     }
 
-    // Sync RU panel only if user hasn't manually scrolled it
-    if (ruDetached.current) return;
+    // Delta-sync RU: apply the same scroll delta as EN, from RU's current position
+    const delta = en.scrollTop - lastEnScrollTop.current;
+    lastEnScrollTop.current = en.scrollTop;
     const r = ruRef.current;
-    if (!r) return;
-    const target = syncRuToEn(en, r);
-    if (r.scrollTop === target) return;
-    r.scrollTop = target;
+    if (!r || delta === 0) return;
+    r.scrollTop = Math.max(0, Math.min(r.scrollHeight - r.clientHeight, r.scrollTop + delta));
   }, []);
 
-  // ── RU scroll handler — marks RU as detached so EN scroll won't override it ──
+  // ── RU scroll handler — RU scrolls freely, no EN sync needed ──
   const handleRuScroll = useCallback(() => {
-    ruDetached.current = true;
+    // nothing — RU is independent; EN drives via delta above
   }, []);
 
 
