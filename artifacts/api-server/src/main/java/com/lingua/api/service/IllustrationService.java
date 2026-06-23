@@ -51,14 +51,19 @@ public class IllustrationService {
                 .filter(p -> BookService.isHeading(p.getOriginalText()))
                 .collect(Collectors.toList());
 
-        // Deduplicate consecutive identical headings
+        // Deduplicate consecutive identical headings and skip non-chapter sections
         List<Paragraph> unique = new ArrayList<>();
         String prevText = null;
         for (Paragraph h : chapters) {
-            if (!h.getOriginalText().equals(prevText)) {
-                unique.add(h);
-                prevText = h.getOriginalText();
-            }
+            String text = h.getOriginalText().trim();
+            if (text.equals(prevText)) continue;
+            prevText = text;
+            // Skip "Chapter Notes", "Chapter End Notes" and similar auxiliary sections
+            String lower = text.toLowerCase();
+            if (lower.contains("chapter notes") || lower.contains("end notes")
+                    || lower.contains("endnotes") || lower.equals("notes")
+                    || lower.equals("preface") || lower.startsWith("preface ")) continue;
+            unique.add(h);
         }
 
         log.info("Book {}: generating illustrations for {} chapters", bookId, unique.size());
