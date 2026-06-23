@@ -183,13 +183,20 @@ public class IllustrationService {
     }
 
     public List<Map<String, Object>> getIllustrations(Integer bookId) {
-        return illustrationRepo.findByBookIdOrderByParagraphId(bookId).stream()
-                .map(i -> {
+        // Use metadata-only query to avoid loading imageData blobs into heap
+        return illustrationRepo.findParagraphIdsByBookId(bookId).stream()
+                .map(paragraphId -> {
                     java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-                    m.put("paragraphId", i.getParagraphId());
-                    m.put("imageUrl", "/api/books/" + bookId + "/chapter-illustrations/" + i.getParagraphId());
+                    m.put("paragraphId", paragraphId);
+                    m.put("imageUrl", "/api/books/" + bookId + "/chapter-illustrations/" + paragraphId);
                     return m;
                 })
                 .collect(Collectors.toList());
+    }
+
+    /** Force-clears existing illustrations for a book and re-schedules generation. */
+    public void forceRegenerateForBook(Integer bookId) {
+        illustrationRepo.deleteByBookId(bookId);
+        scheduleForBook(bookId);
     }
 }

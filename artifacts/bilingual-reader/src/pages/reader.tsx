@@ -363,6 +363,7 @@ export default function ReaderPage() {
   const [pendingRestoreId, setPendingRestoreId] = useState<number | null>(savedBookmark?.paragraphId ?? null);
 
   const pendingRestoreParagraphOffset = useRef<number>(savedBookmark?.paragraphOffset ?? 0);
+  const pendingRestoreRuOffset = useRef<number | null>(savedBookmark?.ruOffset ?? null);
 
   // True once the restore scroll has executed (or was skipped). Prevents a late
   // server response from bouncing the user back to an old position.
@@ -643,9 +644,14 @@ export default function ReaderPage() {
       container.scrollTop = newEnTop;
       const ru = ruRef.current;
       if (ru) {
-        const ruEl = ru.querySelector(`[data-ru-para="${paragraphId}"]`) as HTMLElement | null;
-        if (ruEl) {
-          ru.scrollTop = Math.max(0, offsetInContainer(ruEl, ru) - 12);
+        if (pendingRestoreRuOffset.current !== null) {
+          // Restore exact RU scroll position saved at bookmark time
+          ru.scrollTop = pendingRestoreRuOffset.current;
+        } else {
+          const ruEl = ru.querySelector(`[data-ru-para="${paragraphId}"]`) as HTMLElement | null;
+          if (ruEl) {
+            ru.scrollTop = Math.max(0, offsetInContainer(ruEl, ru) - 12);
+          }
         }
       }
       // Seed firstVisibleParaRef so bookmark button works immediately after restore
@@ -821,6 +827,7 @@ export default function ReaderPage() {
       paragraphId: para.id,
       paragraphPosition: para.position,
       paragraphOffset: para.paragraphOffset,
+      ruOffset: ruRef.current?.scrollTop ?? undefined,
     };
     saveBookmark(bookId, bm);
     saveBookmarkToServer(bookId, bm);

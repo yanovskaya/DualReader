@@ -43,10 +43,16 @@ public class IllustrationController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // POST /books/:id/generate-illustrations — trigger (re)generation manually
+    // POST /books/:id/generate-illustrations?force=true — trigger (re)generation; force clears existing
     @PostMapping("/books/{id}/generate-illustrations")
-    public ResponseEntity<?> generateIllustrations(@PathVariable Integer id) {
-        illustrationService.scheduleForBook(id);
+    public ResponseEntity<?> generateIllustrations(
+            @PathVariable Integer id,
+            @RequestParam(name = "force", defaultValue = "false") boolean force) {
+        if (force) {
+            illustrationService.forceRegenerateForBook(id);
+        } else {
+            illustrationService.scheduleForBook(id);
+        }
         return ResponseEntity.accepted().body(Map.of("status", "generating"));
     }
 }
