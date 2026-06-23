@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -195,6 +196,7 @@ public class IllustrationService {
     }
 
     /** Force-clears existing illustrations for a book and re-schedules generation. */
+    @Transactional
     public void forceRegenerateForBook(Integer bookId) {
         illustrationRepo.deleteByBookId(bookId);
         scheduleForBook(bookId);
