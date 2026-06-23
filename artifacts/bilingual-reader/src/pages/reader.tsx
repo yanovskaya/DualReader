@@ -436,8 +436,8 @@ export default function ReaderPage() {
   const ruRef = useRef<HTMLDivElement>(null);
 
   // ── Scroll sync state ──────────────────────────────────────────────────────
-  // Flag: when RU is driving the sync, suppress EN→RU feedback to prevent loops
-  const suppressEnSync = useRef(false);
+  // When user manually scrolls RU, detach it from EN sync until EN is scrolled again
+  const ruDetached = useRef(false);
   const paraPositions = useRef<ParaPos[]>([]);
 
   // DOM fallback throttle for paragraph position tracking
@@ -770,8 +770,8 @@ export default function ReaderPage() {
       }
     }
 
-    // Sync RU panel (skip if RU is currently driving)
-    if (suppressEnSync.current) return;
+    // Sync RU panel — re-attaches RU if user had detached it by scrolling RU manually
+    ruDetached.current = false;
     const r = ruRef.current;
     if (!r) return;
     const target = syncRuToEn(en, r);
@@ -779,18 +779,9 @@ export default function ReaderPage() {
     r.scrollTop = target;
   }, []);
 
-  // ── RU scroll handler — syncs EN when user scrolls the translation panel ──
+  // ── RU scroll handler — marks RU as detached so EN scroll won't override it ──
   const handleRuScroll = useCallback(() => {
-    const ru = ruRef.current;
-    const en = enRef.current;
-    if (!ru || !en) return;
-    // Map RU scrollTop back to EN (simple 1:1 clamped)
-    const target = Math.max(0, Math.min(en.scrollHeight - en.clientHeight, ru.scrollTop));
-    if (en.scrollTop === target) return;
-    suppressEnSync.current = true;
-    en.scrollTop = target;
-    // EN scroll fires synchronously on assignment; clear flag after it settles
-    requestAnimationFrame(() => { suppressEnSync.current = false; });
+    ruDetached.current = true;
   }, []);
 
 
