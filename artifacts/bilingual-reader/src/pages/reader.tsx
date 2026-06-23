@@ -770,8 +770,8 @@ export default function ReaderPage() {
       }
     }
 
-    // Sync RU panel — re-attaches RU if user had detached it by scrolling RU manually
-    ruDetached.current = false;
+    // Sync RU panel only if user hasn't manually scrolled it
+    if (ruDetached.current) return;
     const r = ruRef.current;
     if (!r) return;
     const target = syncRuToEn(en, r);
