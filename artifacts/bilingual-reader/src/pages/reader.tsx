@@ -1010,20 +1010,6 @@ export default function ReaderPage() {
             {bookmarkSaved && <span>Закладка</span>}
           </button>
 
-          {illustrationMap.size > 0 && (
-            <button
-              onClick={() => { setShowIllustration(s => !s); setShowToc(false); setShowSettings(false); setShowSearch(false); }}
-              title="Иллюстрация главы"
-              style={{
-                height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center",
-                borderRadius: "50%", background: showIllustration ? colors.accent + "22" : "transparent",
-                border: "none", cursor: "pointer",
-                color: showIllustration ? colors.accent : colors.muted,
-              }}
-            >
-              <ImageIcon size={17} />
-            </button>
-          )}
           <button onClick={() => { setShowToc(s => !s); setShowSettings(false); setShowSearch(false); setShowIllustration(false); }} style={{ height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: colors.muted }}>
             <List size={17} />
           </button>
@@ -1175,8 +1161,15 @@ export default function ReaderPage() {
           fontSize={settings.fontSize - 1}
           onNavigate={ch => navigateToChapter(ch.id, ch.position)}
           onClose={() => setShowToc(false)}
-          readingPct={0}
+          readingPct={(firstVisibleParaRef.current?.position ?? 0) / Math.max(1, book?.totalParagraphs ?? 1)}
           totalParagraphs={book?.totalParagraphs ?? 0}
+          currentChapterParaId={currentChapterParaId}
+          illustrationMap={illustrationMap}
+          onShowIllustration={paraId => {
+            setCurrentChapterParaId(paraId);
+            setShowIllustration(true);
+            setShowToc(false);
+          }}
         />
       )}
 
