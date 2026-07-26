@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Plus, WifiOff, BookOpen, ArrowRight, Clock, ChevronDown, ChevronUp, Trash2, Loader2 } from "lucide-react";
 import { saveBook, loadAllBooks, deleteBookCache } from "@/lib/idb";
+import { getRecentBookOrder } from "@/hooks/use-reading-progress";
 import type { CachedBook } from "@/lib/idb";
 import type { Book } from "@workspace/api-client-react/src/generated/api.schemas";
 import { BookCoverArt } from "@/components/book-cover-art";
@@ -338,7 +339,21 @@ export default function Home() {
     }
   }, [booksOnline]);
 
-  const books = booksOnline ?? (offlineBooks.length > 0 ? offlineBooks : undefined);
+  const recentOrder = getRecentBookOrder();
+  const sortByRecent = <T extends { id: number }>(list: T[]): T[] => {
+    if (recentOrder.length === 0) return list;
+    const rank = new Map(recentOrder.map((id, i) => [id, i]));
+    return [...list].sort((a, b) => {
+      const ra = rank.has(a.id) ? rank.get(a.id)! : Infinity;
+      const rb = rank.has(b.id) ? rank.get(b.id)! : Infinity;
+      return ra - rb;
+    });
+  };
+  const books = booksOnline
+    ? sortByRecent(booksOnline)
+    : offlineBooks.length > 0
+    ? sortByRecent(offlineBooks)
+    : undefined;
   const isLoading = isLoadingOnline && !offlineBooks.length;
   const isOffline = !booksOnline && offlineBooks.length > 0;
 

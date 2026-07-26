@@ -1,4 +1,5 @@
 const LAST_BOOK_KEY = "lingua_last_book";
+const RECENT_BOOKS_KEY = "lingua_recent_books";
 const BOOKMARK_KEY = (bookId: number) => `lingua_bookmark_${bookId}`;
 
 export interface Bookmark {
@@ -6,6 +7,26 @@ export interface Bookmark {
   paragraphPosition: number;
   paragraphOffset?: number;
   ruOffset?: number;
+}
+
+/** Records that a book was just opened, pushing it to the front of the recent list. */
+export function recordBookOpened(bookId: number): void {
+  try {
+    localStorage.setItem(LAST_BOOK_KEY, String(bookId));
+    const raw = localStorage.getItem(RECENT_BOOKS_KEY);
+    const list: number[] = raw ? (JSON.parse(raw) as number[]) : [];
+    const filtered = list.filter(id => id !== bookId);
+    filtered.unshift(bookId);
+    localStorage.setItem(RECENT_BOOKS_KEY, JSON.stringify(filtered.slice(0, 100)));
+  } catch {}
+}
+
+/** Returns book IDs ordered by most-recently-opened (index 0 = newest). */
+export function getRecentBookOrder(): number[] {
+  try {
+    const raw = localStorage.getItem(RECENT_BOOKS_KEY);
+    return raw ? (JSON.parse(raw) as number[]) : [];
+  } catch { return []; }
 }
 
 export function saveLastBook(bookId: number): void {
