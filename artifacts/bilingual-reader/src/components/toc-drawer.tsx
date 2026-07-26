@@ -126,7 +126,7 @@ export function TocDrawer({
             const chPct = chapterReadPct(i);
             const isDone = chPct >= 1 && i < currentChapterIdx;
             const title = (ch as { originalText?: string }).originalText ?? "";
-            const hasIllustration = !isNonChapter(title) && illustrationMap.has(ch.id);
+            const hasIllustration = illustrationMap.size > 0 && !isNonChapter(title);
 
             return (
               <div
