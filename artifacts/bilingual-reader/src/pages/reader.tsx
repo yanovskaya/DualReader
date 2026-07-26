@@ -213,7 +213,7 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
               type="range"
               min={SCROLL_SPEED_MIN}
               max={SCROLL_SPEED_MAX}
-              step={0.1}
+              step={0.05}
               value={scrollSpeed}
               onChange={e => setScrollSpeed(parseFloat(e.target.value))}
               style={{ flex: 1, accentColor: colors.accent }}
