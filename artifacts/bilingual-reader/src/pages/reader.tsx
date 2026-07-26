@@ -36,6 +36,12 @@ import {
   type TextAlign,
   type ThemeColors,
 } from "@/hooks/use-reader-settings";
+import {
+  loadScrollSpeed,
+  saveScrollSpeed,
+  SCROLL_SPEED_MIN,
+  SCROLL_SPEED_MAX,
+} from "@/hooks/use-scroll-speed";
 
 const PAGE_SIZE = 40;
 
@@ -149,7 +155,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
 }
 
 // ── Settings bottom sheet ──────────────────────────────────────────────────────
-function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign }: {
+function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign, scrollSpeed, setScrollSpeed }: {
   colors: ThemeColors;
   settings: ReturnType<typeof useReaderSettings>["settings"];
   onClose: () => void;
@@ -159,6 +165,8 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
   setLineSpacing: (v: LineSpacing) => void;
   setMargin: (v: Margin) => void;
   setTextAlign: (v: TextAlign) => void;
+  scrollSpeed: number;
+  setScrollSpeed: (v: number) => void;
 }) {
   const row = { display: "flex", flexDirection: "column" as const, gap: 8, marginBottom: 20 };
   const label = { fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: colors.muted, marginBottom: 4 };
@@ -194,6 +202,23 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
           </div>
           <div style={{ fontSize: settings.fontSize, fontFamily: FONT_FAMILIES[settings.fontFamily].css, color: colors.muted, lineHeight: LINE_SPACINGS[settings.lineSpacing].value, textAlign: "center" }}>
             Пример / Sample
+          </div>
+        </div>
+
+        <div style={row}>
+          <div style={label}>Скорость прокрутки перевода — {scrollSpeed.toFixed(1)}×</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 12, color: colors.muted }}>Мед.</span>
+            <input
+              type="range"
+              min={SCROLL_SPEED_MIN}
+              max={SCROLL_SPEED_MAX}
+              step={0.1}
+              value={scrollSpeed}
+              onChange={e => setScrollSpeed(parseFloat(e.target.value))}
+              style={{ flex: 1, accentColor: colors.accent }}
+            />
+            <span style={{ fontSize: 12, color: colors.muted }}>Быст.</span>
           </div>
         </div>
 
@@ -419,6 +444,15 @@ export default function ReaderPage() {
     return () => { cancelled = true; };
   // Intentionally run only once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]);
+
+  // ── Per-book scroll speed ─────────────────────────────────────────────────
+  const [scrollSpeed, setScrollSpeedState] = useState(() => loadScrollSpeed(bookId));
+  const scrollSpeedRef = useRef(scrollSpeed);
+  const setScrollSpeed = useCallback((v: number) => {
+    scrollSpeedRef.current = v;
+    setScrollSpeedState(v);
+    saveScrollSpeed(bookId, v);
   }, [bookId]);
 
   const [panel, setPanel] = useState<PanelState>({ kind: "hidden" });
@@ -785,12 +819,12 @@ export default function ReaderPage() {
       }
     }
 
-    // Delta-sync RU: apply the same scroll delta as EN, from RU's current position
+    // Delta-sync RU: apply the same scroll delta as EN, scaled by per-book scroll speed
     const delta = en.scrollTop - lastEnScrollTop.current;
     lastEnScrollTop.current = en.scrollTop;
     const r = ruRef.current;
     if (!r || delta === 0) return;
-    r.scrollTop = Math.max(0, Math.min(r.scrollHeight - r.clientHeight, r.scrollTop + delta));
+    r.scrollTop = Math.max(0, Math.min(r.scrollHeight - r.clientHeight, r.scrollTop + delta * scrollSpeedRef.current));
   }, []);
 
   // ── RU scroll handler — RU scrolls freely, no EN sync needed ──
@@ -1169,6 +1203,8 @@ export default function ReaderPage() {
           setLineSpacing={setLineSpacing}
           setMargin={setMargin}
           setTextAlign={setTextAlign}
+          scrollSpeed={scrollSpeed}
+          setScrollSpeed={setScrollSpeed}
         />
       )}
 
