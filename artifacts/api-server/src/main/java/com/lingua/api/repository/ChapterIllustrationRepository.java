@@ -27,6 +27,8 @@ public interface ChapterIllustrationRepository extends JpaRepository<ChapterIllu
 
     long countByBookIdAndParagraphId(Integer bookId, Integer paragraphId);
 
+    long countByBookId(Integer bookId);
+
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query("DELETE FROM ChapterIllustration c WHERE c.bookId = :bookId")
     void deleteByBookId(@Param("bookId") Integer bookId);

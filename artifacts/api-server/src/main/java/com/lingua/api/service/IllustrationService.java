@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -27,6 +28,9 @@ public class IllustrationService {
     private static final int MAX_SCENES_PER_CHAPTER = 5;
     // Single thread so two books don't race each other on rate limits
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    // In-memory progress tracking: bookId → [doneChapters, totalChapters, isGenerating(0/1)]
+    private static final ConcurrentHashMap<Integer, int[]> progressMap = new ConcurrentHashMap<>();
 
     private final GeminiService geminiService;
     private final OpenAiService openAiService;
@@ -72,6 +76,8 @@ public class IllustrationService {
         log.info("Book {}: generating illustrations for {} chapters (up to {} scenes each)",
                 bookId, unique.size(), MAX_SCENES_PER_CHAPTER);
 
+        progressMap.put(bookId, new int[]{0, unique.size(), 1});
+
         for (Paragraph heading : unique) {
             try {
                 long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, heading.getId());
@@ -83,6 +89,7 @@ public class IllustrationService {
 
                 String excerpt = extractExcerpt(all, heading);
                 generateScenesForChapter(bookId, heading, excerpt, (int) existing);
+                progressMap.computeIfPresent(bookId, (k, v) -> { v[0]++; return v; });
 
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
@@ -93,6 +100,7 @@ public class IllustrationService {
             }
         }
 
+        progressMap.computeIfPresent(bookId, (k, v) -> { v[2] = 0; return v; });
         log.info("Book {}: illustration generation complete", bookId);
     }
 
@@ -202,7 +210,7 @@ public class IllustrationService {
     private byte[] generateImageWithRetry(String prompt, String label, int maxRetries) {
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                return geminiService.generateImage(prompt, "gemini-3-pro-image-preview");
+                return geminiService.generateImage(prompt, "gemini-3-pro-image");
             } catch (Exception e) {
                 boolean rateLimit = e.getMessage() != null && e.getMessage().contains("429");
                 if (rateLimit && attempt < maxRetries) {
@@ -258,6 +266,21 @@ public class IllustrationService {
                     return m;
                 })
                 .collect(Collectors.toList());
+    }
+
+    /** Returns current generation progress for a book. */
+    public Map<String, Object> getProgress(Integer bookId) {
+        int[] p = progressMap.get(bookId);
+        boolean generating = p != null && p[2] == 1;
+        int done = p != null ? p[0] : 0;
+        int total = p != null ? p[1] : 0;
+        long saved = illustrationRepo.countByBookId(bookId);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("isGenerating", generating);
+        m.put("doneChapters", done);
+        m.put("totalChapters", total);
+        m.put("savedIllustrations", (int) saved);
+        return m;
     }
 
     /** Force-clears existing illustrations for a book and re-schedules generation. */

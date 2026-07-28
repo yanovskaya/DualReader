@@ -44,6 +44,12 @@ public class IllustrationController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    // GET /books/:id/illustration-status — generation progress
+    @GetMapping("/books/{id}/illustration-status")
+    public ResponseEntity<?> illustrationStatus(@PathVariable Integer id) {
+        return ResponseEntity.ok(illustrationService.getProgress(id));
+    }
+
     // POST /books/:id/generate-illustrations?force=true — trigger (re)generation; force clears existing
     @PostMapping("/books/{id}/generate-illustrations")
     public ResponseEntity<?> generateIllustrations(

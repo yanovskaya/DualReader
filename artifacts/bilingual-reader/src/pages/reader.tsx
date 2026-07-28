@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import {
   useGetBook,
@@ -156,7 +157,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
 }
 
 // ── Settings bottom sheet ──────────────────────────────────────────────────────
-function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign, scrollSpeed, setScrollSpeed, onRegenerateIllustrations, isRegenerating }: {
+function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign, scrollSpeed, setScrollSpeed, onRegenerateIllustrations, isRegenerating, illustrationStatus }: {
   colors: ThemeColors;
   settings: ReturnType<typeof useReaderSettings>["settings"];
   onClose: () => void;
@@ -170,6 +171,7 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
   setScrollSpeed: (v: number) => void;
   onRegenerateIllustrations?: () => void;
   isRegenerating?: boolean;
+  illustrationStatus?: { isGenerating: boolean; doneChapters: number; totalChapters: number; savedIllustrations: number } | null;
 }) {
   const row = { display: "flex", flexDirection: "column" as const, gap: 8, marginBottom: 20 };
   const label = { fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: colors.muted, marginBottom: 4 };
@@ -209,7 +211,7 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
         </div>
 
         <div style={row}>
-          <div style={label}>Скорость прокрутки перевода — {scrollSpeed.toFixed(1)}×</div>
+          <div style={label}>Скорость прокрутки перевода — {scrollSpeed.toFixed(2)}×</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 12, color: colors.muted }}>Мед.</span>
             <input
@@ -307,26 +309,55 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
 
         {/* Regenerate illustrations */}
         {onRegenerateIllustrations && (
-          <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 4, paddingTop: 20 }}>
+          <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 4, paddingTop: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* Progress bar — shown when generating or when we have status data */}
+            {illustrationStatus && (illustrationStatus.isGenerating || illustrationStatus.savedIllustrations > 0) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: colors.muted }}>
+                    {illustrationStatus.isGenerating
+                      ? `Генерация: ${illustrationStatus.doneChapters} / ${illustrationStatus.totalChapters} глав…`
+                      : `Иллюстраций сохранено: ${illustrationStatus.savedIllustrations}`}
+                  </span>
+                  {illustrationStatus.isGenerating && (
+                    <Loader2 size={13} style={{ animation: "spin 1s linear infinite", color: colors.muted }} />
+                  )}
+                </div>
+                {illustrationStatus.isGenerating && illustrationStatus.totalChapters > 0 && (
+                  <div style={{ height: 4, borderRadius: 2, background: colors.border, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%",
+                      borderRadius: 2,
+                      background: colors.accent,
+                      width: `${Math.round((illustrationStatus.doneChapters / illustrationStatus.totalChapters) * 100)}%`,
+                      transition: "width 0.5s ease",
+                    }} />
+                  </div>
+                )}
+              </div>
+            )}
             <button
               onClick={() => { onRegenerateIllustrations(); onClose(); }}
-              disabled={isRegenerating}
+              disabled={isRegenerating || illustrationStatus?.isGenerating}
               style={{
                 width: "100%", padding: "11px 16px",
                 borderRadius: 12,
                 border: `1.5px solid ${colors.border}`,
                 background: "transparent",
-                color: isRegenerating ? colors.muted : colors.text,
-                fontSize: 14, fontWeight: 500, cursor: isRegenerating ? "default" : "pointer",
+                color: (isRegenerating || illustrationStatus?.isGenerating) ? colors.muted : colors.text,
+                fontSize: 14, fontWeight: 500,
+                cursor: (isRegenerating || illustrationStatus?.isGenerating) ? "default" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 transition: "background 0.15s",
               }}
             >
-              {isRegenerating
+              {(isRegenerating || illustrationStatus?.isGenerating)
                 ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
                 : <RefreshCw size={15} />
               }
-              {isRegenerating ? "Генерируются иллюстрации…" : "Обновить иллюстрации"}
+              {(isRegenerating || illustrationStatus?.isGenerating)
+                ? "Генерируются иллюстрации…"
+                : "Обновить иллюстрации"}
             </button>
           </div>
         )}
@@ -583,6 +614,23 @@ export default function ReaderPage() {
       queryKey: [`/api/books/${bookId}/chapter-illustrations`],
       refetchInterval: 30000, // re-check as illustrations generate
     },
+  });
+
+  // Illustration generation status — poll every 4s
+  const { data: illustrationStatus } = useQuery({
+    queryKey: [`/api/books/${bookId}/illustration-status`],
+    queryFn: async () => {
+      const res = await fetch(`/api/books/${bookId}/illustration-status`);
+      if (!res.ok) return null;
+      return res.json() as Promise<{
+        isGenerating: boolean;
+        doneChapters: number;
+        totalChapters: number;
+        savedIllustrations: number;
+      }>;
+    },
+    enabled: !!bookId && !!bookOnline,
+    refetchInterval: 4000,
   });
   // Map from paragraphId → sorted array of imageUrls (by sceneIndex)
   const illustrationMap = useMemo(() => {
@@ -1246,6 +1294,7 @@ export default function ReaderPage() {
             );
           } : undefined}
           isRegenerating={regenerateIllustrationsMutation.isPending}
+          illustrationStatus={illustrationStatus}
         />
       )}
 
