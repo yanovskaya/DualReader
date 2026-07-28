@@ -16,18 +16,19 @@ public class IllustrationController {
     private final IllustrationService illustrationService;
     private final ChapterIllustrationRepository illustrationRepo;
 
-    // GET /books/:id/chapter-illustrations — list all illustration URLs for a book
+    // GET /books/:id/chapter-illustrations — list all illustration metadata for a book
     @GetMapping("/books/{id}/chapter-illustrations")
     public ResponseEntity<?> listIllustrations(@PathVariable Integer id) {
         return ResponseEntity.ok(Map.of("illustrations", illustrationService.getIllustrations(id)));
     }
 
-    // GET /books/:bookId/chapter-illustrations/:paragraphId — serve the actual image
-    @GetMapping("/books/{bookId}/chapter-illustrations/{paragraphId}")
+    // GET /books/:bookId/chapter-illustrations/:illustrationId — serve the actual image by PK
+    @GetMapping("/books/{bookId}/chapter-illustrations/{illustrationId}")
     public ResponseEntity<byte[]> getIllustration(
             @PathVariable Integer bookId,
-            @PathVariable Integer paragraphId) {
-        return illustrationRepo.findByBookIdAndParagraphId(bookId, paragraphId)
+            @PathVariable Integer illustrationId) {
+        return illustrationRepo.findById(illustrationId)
+                .filter(illus -> illus.getBookId().equals(bookId))
                 .map(illus -> {
                     byte[] img = illus.getImageData();
                     boolean isPng  = img.length >= 4 && img[0] == (byte)0x89 && img[1] == (byte)0x50;
@@ -52,6 +53,19 @@ public class IllustrationController {
             illustrationService.forceRegenerateForBook(id);
         } else {
             illustrationService.scheduleForBook(id);
+        }
+        return ResponseEntity.accepted().body(Map.of("status", "generating"));
+    }
+
+    // POST /books/:bookId/chapters/:paragraphId/add-illustration — generate one more illustration for a chapter
+    @PostMapping("/books/{bookId}/chapters/{paragraphId}/add-illustration")
+    public ResponseEntity<?> addIllustration(
+            @PathVariable Integer bookId,
+            @PathVariable Integer paragraphId) {
+        boolean accepted = illustrationService.scheduleAdditionalForChapter(bookId, paragraphId);
+        if (!accepted) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Chapter already has maximum illustrations (5)"));
         }
         return ResponseEntity.accepted().body(Map.of("status", "generating"));
     }

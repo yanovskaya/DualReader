@@ -1,5 +1,6 @@
 package com.lingua.api.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingua.api.model.ChapterIllustration;
 import com.lingua.api.repository.ChapterIllustrationRepository;
 import com.lingua.api.repository.ParagraphRepository;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -22,6 +24,7 @@ import java.util.stream.Collectors;
 public class IllustrationService {
 
     private static final Logger log = LoggerFactory.getLogger(IllustrationService.class);
+    private static final int MAX_SCENES_PER_CHAPTER = 5;
     // Single thread so two books don't race each other on rate limits
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -32,7 +35,7 @@ public class IllustrationService {
 
     /**
      * Schedules async illustration generation for all chapters of a book.
-     * Called after book upload. Skips chapters that already have an illustration.
+     * Called after book upload. Skips chapters that already have illustrations.
      */
     public void scheduleForBook(Integer bookId) {
         executor.submit(() -> {
@@ -59,7 +62,6 @@ public class IllustrationService {
             String text = h.getOriginalText().trim();
             if (text.equals(prevText)) continue;
             prevText = text;
-            // Skip "Chapter Notes", "Chapter End Notes" and similar auxiliary sections
             String lower = text.toLowerCase();
             if (lower.contains("chapter notes") || lower.contains("end notes")
                     || lower.contains("endnotes") || lower.equals("notes")
@@ -67,42 +69,20 @@ public class IllustrationService {
             unique.add(h);
         }
 
-        log.info("Book {}: generating illustrations for {} chapters", bookId, unique.size());
+        log.info("Book {}: generating illustrations for {} chapters (up to {} scenes each)",
+                bookId, unique.size(), MAX_SCENES_PER_CHAPTER);
 
         for (Paragraph heading : unique) {
             try {
-                if (illustrationRepo.existsByBookIdAndParagraphId(bookId, heading.getId())) {
-                    log.debug("Book {}: illustration already exists for paragraph {}, skipping", bookId, heading.getId());
+                long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, heading.getId());
+                if (existing >= MAX_SCENES_PER_CHAPTER) {
+                    log.debug("Book {}: chapter '{}' already has {} illustrations, skipping",
+                            bookId, heading.getOriginalText(), existing);
                     continue;
                 }
 
-                // Collect up to 5 prose paragraphs after the heading for context
-                String excerpt = all.stream()
-                        .filter(p -> p.getPosition() > heading.getPosition()
-                                && p.getPosition() <= heading.getPosition() + 8
-                                && !BookService.isHeading(p.getOriginalText()))
-                        .limit(5)
-                        .map(Paragraph::getOriginalText)
-                        .collect(Collectors.joining("\n\n"));
-
-                byte[] imageBytes = generateIllustrationWithRetry(heading.getOriginalText(), excerpt, 3);
-                if (imageBytes == null) {
-                    log.warn("Book {}: illustration generation returned null for chapter '{}'",
-                            bookId, heading.getOriginalText());
-                    continue;
-                }
-
-                ChapterIllustration illus = new ChapterIllustration();
-                illus.setBookId(bookId);
-                illus.setParagraphId(heading.getId());
-                illus.setImageData(imageBytes);
-                illustrationRepo.save(illus);
-
-                log.info("Book {}: saved illustration for chapter '{}' ({} KB)",
-                        bookId, heading.getOriginalText(), imageBytes.length / 1024);
-
-                // Pause between chapters to avoid rate limits
-                Thread.sleep(3000);
+                String excerpt = extractExcerpt(all, heading);
+                generateScenesForChapter(bookId, heading, excerpt, (int) existing);
 
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
@@ -116,47 +96,154 @@ public class IllustrationService {
         log.info("Book {}: illustration generation complete", bookId);
     }
 
-    private byte[] generateIllustrationWithRetry(String chapterTitle, String excerpt, int maxRetries) {
+    /**
+     * Generates one additional illustration for a specific chapter (up to MAX_SCENES_PER_CHAPTER).
+     * Returns false if the chapter is already at the limit.
+     */
+    public boolean scheduleAdditionalForChapter(Integer bookId, Integer paragraphId) {
+        long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, paragraphId);
+        if (existing >= MAX_SCENES_PER_CHAPTER) {
+            return false;
+        }
+        executor.submit(() -> {
+            try {
+                List<Paragraph> all = paragraphRepo.findByBookIdOrderByPosition(bookId);
+                Paragraph heading = all.stream()
+                        .filter(p -> p.getId().equals(paragraphId))
+                        .findFirst().orElse(null);
+                if (heading == null) return;
+                long currentCount = illustrationRepo.countByBookIdAndParagraphId(bookId, paragraphId);
+                if (currentCount >= MAX_SCENES_PER_CHAPTER) return;
+                String excerpt = extractExcerpt(all, heading);
+                generateScenesForChapter(bookId, heading, excerpt, (int) currentCount);
+            } catch (Exception e) {
+                log.warn("Additional illustration failed for book {} paragraph {}: {}",
+                        bookId, paragraphId, e.getMessage());
+            }
+        });
+        return true;
+    }
+
+    private String extractExcerpt(List<Paragraph> all, Paragraph heading) {
+        return all.stream()
+                .filter(p -> p.getPosition() > heading.getPosition()
+                        && p.getPosition() <= heading.getPosition() + 12
+                        && !BookService.isHeading(p.getOriginalText()))
+                .limit(8)
+                .map(Paragraph::getOriginalText)
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    /**
+     * Generates illustrations for key scenes in a chapter, starting from sceneOffset.
+     * Uses GPT to identify distinct key scenes, then generates one image per scene.
+     */
+    private void generateScenesForChapter(Integer bookId, Paragraph heading,
+                                           String excerpt, int sceneOffset) throws Exception {
+        int toGenerate = MAX_SCENES_PER_CHAPTER - sceneOffset;
+        if (toGenerate <= 0) return;
+
+        List<String> sceneBriefs = identifyKeyScenes(heading.getOriginalText(), excerpt, toGenerate);
+        if (sceneBriefs.isEmpty()) {
+            // Fallback: single illustration from chapter title
+            sceneBriefs = List.of((String) null);
+        }
+
+        for (int i = 0; i < sceneBriefs.size(); i++) {
+            try {
+                String brief = sceneBriefs.get(i);
+                String prompt = buildIllustrationPrompt(heading.getOriginalText(), brief);
+                byte[] imageBytes = generateImageWithRetry(prompt, heading.getOriginalText(), 3);
+                if (imageBytes == null) {
+                    log.warn("Book {}: illustration returned null for chapter '{}' scene {}",
+                            bookId, heading.getOriginalText(), sceneOffset + i);
+                    continue;
+                }
+
+                ChapterIllustration illus = new ChapterIllustration();
+                illus.setBookId(bookId);
+                illus.setParagraphId(heading.getId());
+                illus.setSceneIndex(sceneOffset + i);
+                illus.setImageData(imageBytes);
+                illustrationRepo.save(illus);
+
+                log.info("Book {}: saved illustration for chapter '{}' scene {} ({} KB)",
+                        bookId, heading.getOriginalText(), sceneOffset + i, imageBytes.length / 1024);
+
+                if (i < sceneBriefs.size() - 1) {
+                    Thread.sleep(3000);
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (Exception e) {
+                log.warn("Book {}: scene {} failed for '{}': {}",
+                        bookId, sceneOffset + i, heading.getOriginalText(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Asks GPT to identify up to `maxScenes` distinct key scenes from the chapter excerpt.
+     * Returns a list of visual scene brief strings.
+     */
+    private List<String> identifyKeyScenes(String chapterTitle, String excerpt, int maxScenes) {
+        if (excerpt.isBlank()) return List.of();
+        try {
+            String raw = openAiService.complete("gpt-4.1-nano", 400,
+                List.of(
+                    Map.of("role", "system", "content",
+                        "You are an art director for a book illustration. " +
+                        "Given a chapter excerpt, identify up to " + maxScenes + " distinct KEY SCENES " +
+                        "that are visually interesting and emotionally significant. " +
+                        "For each scene write a brief (max 60 words): include character NAMES and appearance, " +
+                        "setting, mood, and one dramatic action or emotional moment. Be concrete and cinematic. " +
+                        "Return a JSON array of strings (the briefs), e.g. [\"brief1\", \"brief2\"]. " +
+                        "Return ONLY the JSON array, no other text. " +
+                        "If the excerpt has fewer distinct memorable scenes, return fewer items. " +
+                        "Never return more than " + maxScenes + " items."),
+                    Map.of("role", "user", "content",
+                        "Chapter: " + chapterTitle + "\n\n" +
+                        excerpt.substring(0, Math.min(1200, excerpt.length())))
+                )
+            );
+
+            // Parse JSON array
+            String trimmed = raw.strip();
+            // Strip markdown code fences if present
+            if (trimmed.startsWith("```")) {
+                trimmed = trimmed.replaceAll("(?s)^```[a-z]*\\n?", "").replaceAll("```$", "").strip();
+            }
+            ObjectMapper mapper = new ObjectMapper();
+            @SuppressWarnings("unchecked")
+            List<String> scenes = mapper.readValue(trimmed, List.class);
+            // Cap at maxScenes
+            if (scenes.size() > maxScenes) scenes = scenes.subList(0, maxScenes);
+            return scenes;
+        } catch (Exception e) {
+            log.warn("Key scene identification failed for '{}': {}", chapterTitle, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private byte[] generateImageWithRetry(String prompt, String label, int maxRetries) {
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                return generateIllustration(chapterTitle, excerpt);
+                return geminiService.generateImage(prompt, "gemini-3-pro-image-preview");
             } catch (Exception e) {
                 boolean rateLimit = e.getMessage() != null && e.getMessage().contains("429");
                 if (rateLimit && attempt < maxRetries) {
                     long delay = 5000L * attempt;
                     log.info("Rate limit hit for '{}', retrying in {}ms (attempt {}/{})",
-                            chapterTitle, delay, attempt, maxRetries);
+                            label, delay, attempt, maxRetries);
                     try { Thread.sleep(delay); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return null; }
                 } else {
-                    log.warn("Illustration generation failed for '{}': {}", chapterTitle, e.getMessage());
+                    log.warn("Image generation failed for '{}': {}", label, e.getMessage());
                     return null;
                 }
             }
         }
         return null;
-    }
-
-    private byte[] generateIllustration(String chapterTitle, String excerpt) throws Exception {
-        // Use GPT to write a concise scene brief — skip if excerpt is empty
-        String sceneBrief = null;
-        if (!excerpt.isBlank()) {
-            sceneBrief = openAiService.complete("gpt-4.1-nano", 200,
-                List.of(
-                    Map.of("role", "system", "content",
-                        "You are an art director for a book illustration. " +
-                        "Write a visual scene brief (max 80 words) based on this chapter excerpt. " +
-                        "Include: the NAMES of the characters present (e.g. Hermione Granger, Draco Malfoy, Harry Potter), " +
-                        "their exact ages if mentioned (e.g. 17-year-old), physical appearance, " +
-                        "the specific setting, mood, and one dramatic action or emotional moment. " +
-                        "Be concrete and cinematic. Use the actual character names from the text."),
-                    Map.of("role", "user", "content",
-                        "Chapter: " + chapterTitle + "\n\n" + excerpt.substring(0, Math.min(800, excerpt.length())))
-                )
-            );
-        }
-
-        String prompt = buildIllustrationPrompt(chapterTitle, sceneBrief);
-        return geminiService.generateImage(prompt, "gemini-3-pro-image-preview");
     }
 
     private String buildIllustrationPrompt(String chapterTitle, String sceneBrief) {
@@ -185,11 +272,16 @@ public class IllustrationService {
 
     public List<Map<String, Object>> getIllustrations(Integer bookId) {
         // Use metadata-only query to avoid loading imageData blobs into heap
-        return illustrationRepo.findParagraphIdsByBookId(bookId).stream()
-                .map(paragraphId -> {
-                    java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        return illustrationRepo.findMetadataByBookId(bookId).stream()
+                .map(row -> {
+                    Integer ilId = ((Number) row[0]).intValue();
+                    Integer paragraphId = ((Number) row[1]).intValue();
+                    Integer sceneIndex = ((Number) row[2]).intValue();
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("illustrationId", ilId);
                     m.put("paragraphId", paragraphId);
-                    m.put("imageUrl", "/api/books/" + bookId + "/chapter-illustrations/" + paragraphId);
+                    m.put("sceneIndex", sceneIndex);
+                    m.put("imageUrl", "/api/books/" + bookId + "/chapter-illustrations/" + ilId);
                     return m;
                 })
                 .collect(Collectors.toList());

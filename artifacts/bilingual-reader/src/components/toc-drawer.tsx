@@ -24,7 +24,7 @@ interface TocDrawerProps {
   readingPct: number;       // 0–1, for overall progress bar only
   totalParagraphs: number;
   currentChapterParaId: number | null;  // paragraph ID of current chapter
-  illustrationMap: Map<number, string>; // paragraphId → imageUrl
+  illustrationMap: Map<number, string[]>; // paragraphId → array of imageUrls
   onShowIllustration: (paraId: number) => void;
 }
 

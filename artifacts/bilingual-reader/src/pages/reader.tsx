@@ -8,6 +8,7 @@ import {
   useGetBookChapters,
   getGetBookChaptersQueryKey,
   useGetChapterIllustrations,
+  useAddChapterIllustration,
   useLookupWord,
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
@@ -15,7 +16,7 @@ import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark, ImageIcon } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark, ImageIcon, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
@@ -548,19 +549,28 @@ export default function ReaderPage() {
     query: { enabled: !!bookId && !!bookOnline, queryKey: getGetBookChaptersQueryKey(bookId) },
   });
 
-  const { data: illustrationsData } = useGetChapterIllustrations(bookId, {
+  const { data: illustrationsData, refetch: refetchIllustrations } = useGetChapterIllustrations(bookId, {
     query: {
       enabled: !!bookId && !!bookOnline,
       queryKey: [`/api/books/${bookId}/chapter-illustrations`],
       refetchInterval: 30000, // re-check as illustrations generate
     },
   });
-  // Map from paragraphId → imageUrl for fast lookup
+  // Map from paragraphId → sorted array of imageUrls (by sceneIndex)
   const illustrationMap = useMemo(() => {
-    const map = new Map<number, string>();
-    illustrationsData?.illustrations?.forEach(i => map.set(i.paragraphId, i.imageUrl));
+    const map = new Map<number, string[]>();
+    illustrationsData?.illustrations?.forEach(i => {
+      const existing = map.get(i.paragraphId) ?? [];
+      existing.push(i.imageUrl);
+      map.set(i.paragraphId, existing);
+    });
     return map;
   }, [illustrationsData]);
+
+  // Carousel index per chapter (resets when chapter changes)
+  const [illustrationIndex, setIllustrationIndex] = useState(0);
+  useEffect(() => { setIllustrationIndex(0); }, [currentChapterParaId]);
+  const addIllustrationMutation = useAddChapterIllustration();
 
   // Background prefetch ALL paragraph batches for offline use
   useEffect(() => {
@@ -1203,13 +1213,17 @@ export default function ReaderPage() {
 
       {/* ── Illustration panel ───────────────────────────────────────── */}
       {showIllustration && (() => {
-        const ilUrl = currentChapterParaId != null
-          ? illustrationMap.get(currentChapterParaId)
-          : null;
+        const ilUrls = currentChapterParaId != null
+          ? (illustrationMap.get(currentChapterParaId) ?? [])
+          : [];
+        const clampedIdx = Math.min(illustrationIndex, Math.max(0, ilUrls.length - 1));
+        const ilUrl = ilUrls[clampedIdx] ?? null;
         const currentChapter = currentChapterParaId != null
           ? chapters.find((ch: { id: number }) => ch.id === currentChapterParaId)
           : null;
         const chapterTitle = (currentChapter as { text?: string } | null)?.text ?? null;
+        const canAddMore = ilUrls.length < 5;
+        const isAddingMore = addIllustrationMutation.isPending;
 
         return (
           <div
@@ -1279,6 +1293,114 @@ export default function ReaderPage() {
                 paddingBottom: "max(28px, env(safe-area-inset-bottom, 28px))",
               }}>
                 {chapterTitle}
+              </div>
+            )}
+
+            {/* Carousel controls — only when there's at least one image */}
+            {ilUrls.length > 0 && (
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: "50%", left: 0, right: 0,
+                  transform: "translateY(-50%)",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  pointerEvents: "none",
+                  padding: "0 8px",
+                  zIndex: 3,
+                }}
+              >
+                <button
+                  onClick={e => { e.stopPropagation(); setIllustrationIndex(i => Math.max(0, i - 1)); }}
+                  disabled={clampedIdx === 0}
+                  style={{
+                    pointerEvents: "all",
+                    width: 40, height: 40, borderRadius: "50%",
+                    background: clampedIdx === 0 ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0.55)",
+                    border: "none", cursor: clampedIdx === 0 ? "default" : "pointer",
+                    color: "#fff", opacity: clampedIdx === 0 ? 0.3 : 1,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+                    transition: "opacity 0.15s",
+                  }}
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); setIllustrationIndex(i => Math.min(ilUrls.length - 1, i + 1)); }}
+                  disabled={clampedIdx === ilUrls.length - 1}
+                  style={{
+                    pointerEvents: "all",
+                    width: 40, height: 40, borderRadius: "50%",
+                    background: clampedIdx === ilUrls.length - 1 ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0.55)",
+                    border: "none", cursor: clampedIdx === ilUrls.length - 1 ? "default" : "pointer",
+                    color: "#fff", opacity: clampedIdx === ilUrls.length - 1 ? 0.3 : 1,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+                    transition: "opacity 0.15s",
+                  }}
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
+
+            {/* Dot indicators + Generate more button */}
+            {ilUrls.length > 0 && (
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  bottom: "max(80px, calc(env(safe-area-inset-bottom, 28px) + 56px))",
+                  left: 0, right: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  gap: 8, zIndex: 3,
+                }}
+              >
+                {ilUrls.map((_, dotIdx) => (
+                  <button
+                    key={dotIdx}
+                    onClick={e => { e.stopPropagation(); setIllustrationIndex(dotIdx); }}
+                    style={{
+                      width: dotIdx === clampedIdx ? 20 : 7,
+                      height: 7,
+                      borderRadius: 4,
+                      background: dotIdx === clampedIdx ? "#fff" : "rgba(255,255,255,0.4)",
+                      border: "none", cursor: "pointer", padding: 0,
+                      transition: "width 0.2s, background 0.2s",
+                    }}
+                  />
+                ))}
+
+                {/* + button for generating more */}
+                {canAddMore && bookId && currentChapterParaId != null && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      addIllustrationMutation.mutate(
+                        { bookId: bookId!, paragraphId: currentChapterParaId! },
+                        { onSuccess: () => { refetchIllustrations(); } }
+                      );
+                    }}
+                    disabled={isAddingMore}
+                    title="Сгенерировать ещё иллюстрацию"
+                    style={{
+                      width: 28, height: 28, borderRadius: "50%",
+                      background: isAddingMore ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.25)",
+                      border: "1.5px solid rgba(255,255,255,0.5)",
+                      cursor: isAddingMore ? "default" : "pointer",
+                      color: "#fff",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      transition: "background 0.15s",
+                      marginLeft: 4,
+                    }}
+                  >
+                    {isAddingMore
+                      ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                      : <Plus size={14} />
+                    }
+                  </button>
+                )}
               </div>
             )}
           </div>

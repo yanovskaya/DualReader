@@ -22,6 +22,10 @@ public class ChapterIllustration {
     @Column(name = "paragraph_id", nullable = false)
     private Integer paragraphId;
 
+    /** 0-based index within the chapter (0 = first scene, 1 = second scene, …) */
+    @Column(name = "scene_index", nullable = false)
+    private int sceneIndex = 0;
+
     @Column(name = "image_data", nullable = false)
     private byte[] imageData;
 

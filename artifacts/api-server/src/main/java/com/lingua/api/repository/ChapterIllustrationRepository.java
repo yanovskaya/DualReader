@@ -13,12 +13,19 @@ import java.util.Optional;
 public interface ChapterIllustrationRepository extends JpaRepository<ChapterIllustration, Integer> {
 
     // Metadata-only — excludes imageData blob to prevent OOM when listing
-    @Query("SELECT c.paragraphId FROM ChapterIllustration c WHERE c.bookId = :bookId ORDER BY c.paragraphId")
+    // Returns rows ordered by paragraphId, then sceneIndex
+    @Query("SELECT c.id, c.paragraphId, c.sceneIndex FROM ChapterIllustration c WHERE c.bookId = :bookId ORDER BY c.paragraphId ASC, c.sceneIndex ASC")
+    List<Object[]> findMetadataByBookId(@Param("bookId") Integer bookId);
+
+    // Distinct paragraph IDs that have at least one illustration (for TOC map)
+    @Query("SELECT DISTINCT c.paragraphId FROM ChapterIllustration c WHERE c.bookId = :bookId ORDER BY c.paragraphId")
     List<Integer> findParagraphIdsByBookId(@Param("bookId") Integer bookId);
 
-    Optional<ChapterIllustration> findByBookIdAndParagraphId(Integer bookId, Integer paragraphId);
+    List<ChapterIllustration> findByBookIdAndParagraphIdOrderBySceneIndexAsc(Integer bookId, Integer paragraphId);
 
     boolean existsByBookIdAndParagraphId(Integer bookId, Integer paragraphId);
+
+    long countByBookIdAndParagraphId(Integer bookId, Integer paragraphId);
 
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query("DELETE FROM ChapterIllustration c WHERE c.bookId = :bookId")
