@@ -154,14 +154,19 @@ export const GetChapterIllustrationsResponse = zod.object({
 
 
 /**
- * @summary Generate one additional illustration for a specific chapter (max 5 total)
+ * @summary Schedule illustration generation (or force-regeneration) for all chapters
  */
-export const AddChapterIllustrationParams = zod.object({
-  "bookId": zod.coerce.number().int(),
-  "paragraphId": zod.coerce.number().int()
+export const GenerateIllustrationsParams = zod.object({
+  "id": zod.coerce.number().int()
 })
 
-export const AddChapterIllustrationResponse = zod.object({
+export const generateIllustrationsQueryForceDefault = false;
+
+export const GenerateIllustrationsQueryParams = zod.object({
+  "force": zod.coerce.boolean().default(generateIllustrationsQueryForceDefault)
+})
+
+export const GenerateIllustrationsResponse = zod.object({
   "status": zod.string().optional()
 })
 

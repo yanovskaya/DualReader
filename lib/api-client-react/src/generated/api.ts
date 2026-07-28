@@ -20,11 +20,12 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
-  AddChapterIllustration202,
   Book,
   BookStats,
   CreateBookBody,
   DictionaryEntry,
+  GenerateIllustrations202,
+  GenerateIllustrationsParams,
   GetBookChapters200,
   GetChapterIllustrations200,
   HealthStatus,
@@ -682,22 +683,29 @@ export function useGetChapterIllustrations<TData = Awaited<ReturnType<typeof get
 
 
 
-export const getAddChapterIllustrationUrl = (bookId: number,
-    paragraphId: number,) => {
+export const getGenerateIllustrationsUrl = (id: number,
+    params?: GenerateIllustrationsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/books/${bookId}/chapters/${paragraphId}/add-illustration`
+  return stringifiedParams.length > 0 ? `/api/books/${id}/generate-illustrations?${stringifiedParams}` : `/api/books/${id}/generate-illustrations`
 }
 
 /**
- * @summary Generate one additional illustration for a specific chapter (max 5 total)
+ * @summary Schedule illustration generation (or force-regeneration) for all chapters
  */
-export const addChapterIllustration = async (bookId: number,
-    paragraphId: number, options?: Parameters<typeof customFetch>[1]): Promise<AddChapterIllustration202> => {
+export const generateIllustrations = async (id: number,
+    params?: GenerateIllustrationsParams, options?: Parameters<typeof customFetch>[1]): Promise<GenerateIllustrations202> => {
 
-  return customFetch<AddChapterIllustration202>(getAddChapterIllustrationUrl(bookId,paragraphId),
+  return customFetch<GenerateIllustrations202>(getGenerateIllustrationsUrl(id,params),
   {
     ...options,
     method: 'POST'
@@ -710,11 +718,11 @@ export const addChapterIllustration = async (bookId: number,
 
 
 
-export const getAddChapterIllustrationMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addChapterIllustration>>, TError,{bookId: number;paragraphId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof addChapterIllustration>>, TError,{bookId: number;paragraphId: number}, TContext> => {
+export const getGenerateIllustrationsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateIllustrations>>, TError,{id: number;params?: GenerateIllustrationsParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateIllustrations>>, TError,{id: number;params?: GenerateIllustrationsParams}, TContext> => {
 
-const mutationKey = ['addChapterIllustration'];
+const mutationKey = ['generateIllustrations'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -724,10 +732,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addChapterIllustration>>, {bookId: number;paragraphId: number}> = (props) => {
-          const {bookId,paragraphId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateIllustrations>>, {id: number;params?: GenerateIllustrationsParams}> = (props) => {
+          const {id,params} = props ?? {};
 
-          return  addChapterIllustration(bookId,paragraphId,requestOptions)
+          return  generateIllustrations(id,params,requestOptions)
         }
 
 
@@ -737,22 +745,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type AddChapterIllustrationMutationResult = NonNullable<Awaited<ReturnType<typeof addChapterIllustration>>>
+    export type GenerateIllustrationsMutationResult = NonNullable<Awaited<ReturnType<typeof generateIllustrations>>>
 
-    export type AddChapterIllustrationMutationError = ErrorType<void>
+    export type GenerateIllustrationsMutationError = ErrorType<unknown>
 
     /**
- * @summary Generate one additional illustration for a specific chapter (max 5 total)
+ * @summary Schedule illustration generation (or force-regeneration) for all chapters
  */
-export const useAddChapterIllustration = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addChapterIllustration>>, TError,{bookId: number;paragraphId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useGenerateIllustrations = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateIllustrations>>, TError,{id: number;params?: GenerateIllustrationsParams}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof addChapterIllustration>>,
+        Awaited<ReturnType<typeof generateIllustrations>>,
         TError,
-        {bookId: number;paragraphId: number},
+        {id: number;params?: GenerateIllustrationsParams},
         TContext
       > => {
-      return useMutation(getAddChapterIllustrationMutationOptions(options));
+      return useMutation(getGenerateIllustrationsMutationOptions(options));
     }
 
 export const getSearchBookUrl = (id: number,

@@ -8,7 +8,7 @@ import {
   useGetBookChapters,
   getGetBookChaptersQueryKey,
   useGetChapterIllustrations,
-  useAddChapterIllustration,
+  useGenerateIllustrations,
   useLookupWord,
   getLookupWordQueryKey,
 } from "@workspace/api-client-react";
@@ -16,7 +16,7 @@ import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark, ImageIcon, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark, ImageIcon, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
@@ -156,7 +156,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
 }
 
 // ── Settings bottom sheet ──────────────────────────────────────────────────────
-function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign, scrollSpeed, setScrollSpeed }: {
+function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign, scrollSpeed, setScrollSpeed, onRegenerateIllustrations, isRegenerating }: {
   colors: ThemeColors;
   settings: ReturnType<typeof useReaderSettings>["settings"];
   onClose: () => void;
@@ -168,6 +168,8 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
   setTextAlign: (v: TextAlign) => void;
   scrollSpeed: number;
   setScrollSpeed: (v: number) => void;
+  onRegenerateIllustrations?: () => void;
+  isRegenerating?: boolean;
 }) {
   const row = { display: "flex", flexDirection: "column" as const, gap: 8, marginBottom: 20 };
   const label = { fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: colors.muted, marginBottom: 4 };
@@ -302,6 +304,32 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
             })}
           </div>
         </div>
+
+        {/* Regenerate illustrations */}
+        {onRegenerateIllustrations && (
+          <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 4, paddingTop: 20 }}>
+            <button
+              onClick={() => { onRegenerateIllustrations(); onClose(); }}
+              disabled={isRegenerating}
+              style={{
+                width: "100%", padding: "11px 16px",
+                borderRadius: 12,
+                border: `1.5px solid ${colors.border}`,
+                background: "transparent",
+                color: isRegenerating ? colors.muted : colors.text,
+                fontSize: 14, fontWeight: 500, cursor: isRegenerating ? "default" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                transition: "background 0.15s",
+              }}
+            >
+              {isRegenerating
+                ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+                : <RefreshCw size={15} />
+              }
+              {isRegenerating ? "Генерируются иллюстрации…" : "Обновить иллюстрации"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -570,7 +598,7 @@ export default function ReaderPage() {
   // Carousel index per chapter (resets when chapter changes)
   const [illustrationIndex, setIllustrationIndex] = useState(0);
   useEffect(() => { setIllustrationIndex(0); }, [currentChapterParaId]);
-  const addIllustrationMutation = useAddChapterIllustration();
+  const regenerateIllustrationsMutation = useGenerateIllustrations();
 
   // Background prefetch ALL paragraph batches for offline use
   useEffect(() => {
@@ -1208,6 +1236,13 @@ export default function ReaderPage() {
           setTextAlign={setTextAlign}
           scrollSpeed={scrollSpeed}
           setScrollSpeed={setScrollSpeed}
+          onRegenerateIllustrations={bookId ? () => {
+            regenerateIllustrationsMutation.mutate(
+              { id: bookId, params: { force: true } },
+              { onSuccess: () => setTimeout(() => refetchIllustrations(), 5000) }
+            );
+          } : undefined}
+          isRegenerating={regenerateIllustrationsMutation.isPending}
         />
       )}
 
@@ -1222,8 +1257,6 @@ export default function ReaderPage() {
           ? chapters.find((ch: { id: number }) => ch.id === currentChapterParaId)
           : null;
         const chapterTitle = (currentChapter as { text?: string } | null)?.text ?? null;
-        const canAddMore = ilUrls.length < 5;
-        const isAddingMore = addIllustrationMutation.isPending;
 
         return (
           <div
@@ -1371,36 +1404,6 @@ export default function ReaderPage() {
                     }}
                   />
                 ))}
-
-                {/* + button for generating more */}
-                {canAddMore && bookId && currentChapterParaId != null && (
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      addIllustrationMutation.mutate(
-                        { bookId: bookId!, paragraphId: currentChapterParaId! },
-                        { onSuccess: () => { refetchIllustrations(); } }
-                      );
-                    }}
-                    disabled={isAddingMore}
-                    title="Сгенерировать ещё иллюстрацию"
-                    style={{
-                      width: 28, height: 28, borderRadius: "50%",
-                      background: isAddingMore ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.25)",
-                      border: "1.5px solid rgba(255,255,255,0.5)",
-                      cursor: isAddingMore ? "default" : "pointer",
-                      color: "#fff",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      transition: "background 0.15s",
-                      marginLeft: 4,
-                    }}
-                  >
-                    {isAddingMore
-                      ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-                      : <Plus size={14} />
-                    }
-                  </button>
-                )}
               </div>
             )}
           </div>

@@ -96,34 +96,6 @@ public class IllustrationService {
         log.info("Book {}: illustration generation complete", bookId);
     }
 
-    /**
-     * Generates one additional illustration for a specific chapter (up to MAX_SCENES_PER_CHAPTER).
-     * Returns false if the chapter is already at the limit.
-     */
-    public boolean scheduleAdditionalForChapter(Integer bookId, Integer paragraphId) {
-        long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, paragraphId);
-        if (existing >= MAX_SCENES_PER_CHAPTER) {
-            return false;
-        }
-        executor.submit(() -> {
-            try {
-                List<Paragraph> all = paragraphRepo.findByBookIdOrderByPosition(bookId);
-                Paragraph heading = all.stream()
-                        .filter(p -> p.getId().equals(paragraphId))
-                        .findFirst().orElse(null);
-                if (heading == null) return;
-                long currentCount = illustrationRepo.countByBookIdAndParagraphId(bookId, paragraphId);
-                if (currentCount >= MAX_SCENES_PER_CHAPTER) return;
-                String excerpt = extractExcerpt(all, heading);
-                generateScenesForChapter(bookId, heading, excerpt, (int) currentCount);
-            } catch (Exception e) {
-                log.warn("Additional illustration failed for book {} paragraph {}: {}",
-                        bookId, paragraphId, e.getMessage());
-            }
-        });
-        return true;
-    }
-
     private String extractExcerpt(List<Paragraph> all, Paragraph heading) {
         return all.stream()
                 .filter(p -> p.getPosition() > heading.getPosition()
@@ -184,24 +156,25 @@ public class IllustrationService {
     }
 
     /**
-     * Asks GPT to identify up to `maxScenes` distinct key scenes from the chapter excerpt.
-     * Returns a list of visual scene brief strings.
+     * Asks GPT to autonomously decide how many key scenes (1–5) to illustrate
+     * based on chapter length and narrative richness, then returns their briefs.
      */
     private List<String> identifyKeyScenes(String chapterTitle, String excerpt, int maxScenes) {
         if (excerpt.isBlank()) return List.of();
         try {
-            String raw = openAiService.complete("gpt-4.1-nano", 400,
+            String raw = openAiService.complete("gpt-4.1-nano", 500,
                 List.of(
                     Map.of("role", "system", "content",
                         "You are an art director for a book illustration. " +
-                        "Given a chapter excerpt, identify up to " + maxScenes + " distinct KEY SCENES " +
-                        "that are visually interesting and emotionally significant. " +
-                        "For each scene write a brief (max 60 words): include character NAMES and appearance, " +
+                        "Given a chapter excerpt, decide yourself how many key scenes to illustrate (between 1 and " + maxScenes + "). " +
+                        "Use chapter length and narrative richness as your guide: " +
+                        "short or transitional chapters → 1–2 scenes; " +
+                        "medium chapters with a clear arc → 2–3 scenes; " +
+                        "long, action-packed or emotionally dense chapters → 4–5 scenes. " +
+                        "For each chosen scene write a brief (max 60 words): include character NAMES and appearance, " +
                         "setting, mood, and one dramatic action or emotional moment. Be concrete and cinematic. " +
                         "Return a JSON array of strings (the briefs), e.g. [\"brief1\", \"brief2\"]. " +
-                        "Return ONLY the JSON array, no other text. " +
-                        "If the excerpt has fewer distinct memorable scenes, return fewer items. " +
-                        "Never return more than " + maxScenes + " items."),
+                        "Return ONLY the JSON array, no other text."),
                     Map.of("role", "user", "content",
                         "Chapter: " + chapterTitle + "\n\n" +
                         excerpt.substring(0, Math.min(1200, excerpt.length())))

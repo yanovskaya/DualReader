@@ -178,22 +178,23 @@ paths:
                     items:
                       $ref: "#/components/schemas/ChapterIllustration"
 
-  /books/{bookId}/chapters/{paragraphId}/add-illustration:
+  /books/{id}/generate-illustrations:
     post:
-      operationId: addChapterIllustration
+      operationId: generateIllustrations
       tags: [books]
-      summary: Generate one additional illustration for a specific chapter (max 5 total)
+      summary: Schedule illustration generation (or force-regeneration) for all chapters
       parameters:
-        - name: bookId
+        - name: id
           in: path
           required: true
           schema:
             type: integer
-        - name: paragraphId
-          in: path
-          required: true
+        - name: force
+          in: query
+          required: false
           schema:
-            type: integer
+            type: boolean
+            default: false
       responses:
         "202":
           description: Generation scheduled
@@ -204,8 +205,6 @@ paths:
                 properties:
                   status:
                     type: string
-        "400":
-          description: Chapter already has maximum illustrations
 
   /books/{id}/search:
     get:

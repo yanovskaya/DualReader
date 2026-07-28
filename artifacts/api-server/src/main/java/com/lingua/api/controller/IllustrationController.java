@@ -57,16 +57,4 @@ public class IllustrationController {
         return ResponseEntity.accepted().body(Map.of("status", "generating"));
     }
 
-    // POST /books/:bookId/chapters/:paragraphId/add-illustration — generate one more illustration for a chapter
-    @PostMapping("/books/{bookId}/chapters/{paragraphId}/add-illustration")
-    public ResponseEntity<?> addIllustration(
-            @PathVariable Integer bookId,
-            @PathVariable Integer paragraphId) {
-        boolean accepted = illustrationService.scheduleAdditionalForChapter(bookId, paragraphId);
-        if (!accepted) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Chapter already has maximum illustrations (5)"));
-        }
-        return ResponseEntity.accepted().body(Map.of("status", "generating"));
-    }
 }

@@ -142,7 +142,11 @@ export type GetChapterIllustrations200 = {
   illustrations: ChapterIllustration[];
 };
 
-export type AddChapterIllustration202 = {
+export type GenerateIllustrationsParams = {
+force?: boolean;
+};
+
+export type GenerateIllustrations202 = {
   status?: string;
 };
 
