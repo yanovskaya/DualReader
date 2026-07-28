@@ -14,8 +14,11 @@ const PAGE_SIZE = 40;
 
 /**
  * Load one batch of paragraphs for a book.
- * Strategy: IndexedDB first (instant, offline), then network fallback.
- * On a network hit, the result is also saved to IDB for future offline use.
+ * Strategy: stale-while-revalidate.
+ *   - Return IDB immediately (offline-safe, instant).
+ *   - If online, also fetch from network in the background.
+ *   - If the network response differs (e.g. translation completed), update IDB
+ *     and refresh state so the user sees up-to-date translations.
  */
 export function useParagraphsOffline(
   bookId: number,
@@ -37,18 +40,21 @@ export function useParagraphsOffline(
     async function load() {
       setState(s => ({ ...s, isLoading: true }));
 
-      // 1. Try IDB first
+      // 1. Try IDB first — instant, works offline
+      let idbData: ParagraphsPage | null = null;
       try {
-        const cached = await loadParagraphPage(bookId, page);
-        if (cached && !cancelled) {
-          setState({ data: cached, isSuccess: true, isLoading: false, source: "idb" });
-          return;
+        idbData = await loadParagraphPage(bookId, page);
+        if (idbData && !cancelled) {
+          setState({ data: idbData, isSuccess: true, isLoading: false, source: "idb" });
         }
       } catch {
-        // IDB unavailable — continue to network
+        // IDB unavailable — skip to network only
       }
 
-      // 2. Fall back to network
+      // 2. Always try network (stale-while-revalidate):
+      //    - If IDB had no data: this is the primary load.
+      //    - If IDB had data: this runs in background to check for fresher content
+      //      (e.g. translation completed since last cache).
       try {
         const res = await fetch(
           `/api/books/${bookId}/paragraphs?page=${page}&pageSize=${PAGE_SIZE}`,
@@ -56,14 +62,24 @@ export function useParagraphsOffline(
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as ParagraphsPage;
 
-        // Save to IDB for next time (including offline)
+        if (cancelled) return;
+
+        // Check if the network data is meaningfully newer than what we showed:
+        // compare translated paragraph count so we don't unnecessarily rerender.
+        const idbTranslated = idbData?.paragraphs.filter(p => p.translatedText).length ?? -1;
+        const netTranslated = data.paragraphs.filter(p => p.translatedText).length;
+        const hasNewTranslations = netTranslated > idbTranslated;
+
+        // Save to IDB regardless (keep cache fresh)
         saveParagraphPage(bookId, page, data).catch(() => {});
 
-        if (!cancelled) {
+        // Update state if: we had no data yet, OR network has more translations
+        if (!idbData || hasNewTranslations) {
           setState({ data, isSuccess: true, isLoading: false, source: "network" });
         }
       } catch {
-        if (!cancelled) {
+        // Offline or request failed — IDB data (if any) was already shown above
+        if (!idbData && !cancelled) {
           setState(s => ({ ...s, isLoading: false }));
         }
       }

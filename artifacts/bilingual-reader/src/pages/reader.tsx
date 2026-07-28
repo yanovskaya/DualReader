@@ -600,7 +600,10 @@ export default function ReaderPage() {
   useEffect(() => { setIllustrationIndex(0); }, [currentChapterParaId]);
   const regenerateIllustrationsMutation = useGenerateIllustrations();
 
-  // Background prefetch ALL paragraph batches for offline use
+  // Background prefetch ALL paragraph batches for offline use.
+  // Re-runs when translation status changes (e.g. "translating" → "completed")
+  // so IDB always ends up with the fully-translated version.
+  const translationStatus = statusData?.status;
   useEffect(() => {
     if (!bookOnline || !bookId) return;
     const totalPages = Math.ceil((bookOnline.totalParagraphs ?? 0) / PAGE_SIZE);
@@ -622,7 +625,7 @@ export default function ReaderPage() {
     prefetch();
     return () => { active = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookOnline?.id, bookId]);
+  }, [bookOnline?.id, bookId, translationStatus]);
 
   // Accumulate paragraphs as batches load
   useEffect(() => {
