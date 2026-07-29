@@ -908,12 +908,48 @@ export default function ReaderPage() {
       }
     }
 
-    // Delta-sync RU: apply the same scroll delta as EN, scaled by per-book scroll speed
-    const delta = en.scrollTop - lastEnScrollTop.current;
+    // Paragraph-anchor sync: find the first visible EN paragraph, scroll RU to it.
+    // This prevents drift caused by EN and RU having different scrollHeights
+    // (different font sizes + panel heights make delta-accumulation diverge).
     lastEnScrollTop.current = en.scrollTop;
     const r = ruRef.current;
-    if (!r || delta === 0) return;
-    r.scrollTop = Math.max(0, Math.min(r.scrollHeight - r.clientHeight, r.scrollTop + delta * scrollSpeedRef.current));
+    if (!r) return;
+
+    // Determine the anchor paragraph and how far into it EN has scrolled
+    let anchorId: number | undefined;
+    let frac = 0;
+
+    const vp = paraPositions.current.find(p => p.enBottom > en.scrollTop + 10);
+    if (vp) {
+      anchorId = vp.id;
+      const ph = vp.enBottom - vp.enTop;
+      frac = ph > 0 ? Math.max(0, Math.min(1, (en.scrollTop - vp.enTop) / ph)) : 0;
+    } else {
+      // DOM fallback (rare: paraPositions not yet populated)
+      for (const p of displayParagraphsRef.current) {
+        const el = document.getElementById(`para-${p.id}`);
+        if (!el) continue;
+        const top = offsetInContainer(el, en);
+        if (top + el.offsetHeight > en.scrollTop + 10) {
+          anchorId = p.id as number;
+          frac = el.offsetHeight > 0 ? Math.max(0, Math.min(1, (en.scrollTop - top) / el.offsetHeight)) : 0;
+          break;
+        }
+      }
+    }
+
+    if (anchorId == null) return;
+
+    const ruEl = r.querySelector(`[data-ru-para="${anchorId}"]`) as HTMLElement | null;
+    if (!ruEl) return;
+
+    // scrollSpeed shifts RU lead/lag: 1.0 = aligned, >1.0 = RU ahead, <1.0 = behind.
+    // We express the offset as a fraction of the RU element's own height so the
+    // effect is proportional regardless of font size.
+    const speedOffset = (scrollSpeedRef.current - 1.0) * ruEl.offsetHeight * 3;
+    const ruTop = offsetInContainer(ruEl, r);
+    const target = ruTop + frac * ruEl.offsetHeight - 12 + speedOffset;
+    r.scrollTop = Math.max(0, Math.min(r.scrollHeight - r.clientHeight, target));
   }, []);
 
   // ── RU scroll handler — RU scrolls freely, no EN sync needed ──
