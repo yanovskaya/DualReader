@@ -1,4 +1,4 @@
-import { Image, Sparkles, RefreshCw } from "lucide-react";
+import { Image, Sparkles, Loader2 } from "lucide-react";
 import type { Chapter } from "@workspace/api-client-react/src/generated/api.schemas";
 import type { ThemeColors } from "@/hooks/use-reader-settings";
 
@@ -43,14 +43,14 @@ interface TocDrawerProps {
   currentChapterParaId: number | null;  // paragraph ID of current chapter
   illustrationMap: Map<number, string[]>; // paragraphId → array of imageUrls
   onShowIllustration: (paraId: number) => void;
-  onGenerateIllustration: (paraId: number) => void;   // generate (no illustrations yet)
-  onRegenerateIllustration: (paraId: number) => void; // force-regenerate (already has illustrations)
+  onGenerateIllustration: (paraId: number) => void;  // tap ✨ → starts generation, keeps TOC open
+  generatingParaIds: Set<number>;                    // shows spinner while generating
 }
 
 export function TocDrawer({
   chapters, colors, fontSize, onNavigate, onClose,
   readingPct, totalParagraphs,
-  currentChapterParaId, illustrationMap, onShowIllustration, onGenerateIllustration, onRegenerateIllustration,
+  currentChapterParaId, illustrationMap, onShowIllustration, onGenerateIllustration, generatingParaIds,
 }: TocDrawerProps) {
 
   // Use currentChapterParaId (set by scroll handler) for accurate highlighting
@@ -209,8 +209,14 @@ export function TocDrawer({
                   </div>
                 </button>
 
-                {/* View illustration (shown when illustrations exist) */}
-                {hasIllustration && (
+                {/* Single right-side action button */}
+                {generatingParaIds.has(ch.id) ? (
+                  /* Generating — show spinner */
+                  <div style={{ ...iconBtnStyle(colors), cursor: "default", color: colors.accent }}>
+                    <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+                  </div>
+                ) : hasIllustration ? (
+                  /* Has illustrations — tap to view */
                   <button
                     onClick={e => { e.stopPropagation(); onShowIllustration(ch.id); onClose(); }}
                     title="Посмотреть иллюстрации"
@@ -220,31 +226,16 @@ export function TocDrawer({
                   >
                     <Image size={15} />
                   </button>
-                )}
-
-                {/* Generate (no illustrations yet) */}
-                {!hasIllustration && (
+                ) : (
+                  /* No illustrations — tap to generate (keeps TOC open) */
                   <button
-                    onClick={e => { e.stopPropagation(); onGenerateIllustration(ch.id); onClose(); }}
+                    onClick={e => { e.stopPropagation(); onGenerateIllustration(ch.id); }}
                     title="Сгенерировать иллюстрации"
                     style={iconBtnStyle(colors)}
                     onMouseEnter={e => hoverOn(e, colors)}
                     onMouseLeave={e => hoverOff(e, colors)}
                   >
                     <Sparkles size={14} />
-                  </button>
-                )}
-
-                {/* Regenerate (illustrations exist — force redo) */}
-                {hasIllustration && (
-                  <button
-                    onClick={e => { e.stopPropagation(); onRegenerateIllustration(ch.id); onClose(); }}
-                    title="Перегенерировать иллюстрации"
-                    style={iconBtnStyle(colors)}
-                    onMouseEnter={e => hoverOn(e, colors)}
-                    onMouseLeave={e => hoverOff(e, colors)}
-                  >
-                    <RefreshCw size={13} />
                   </button>
                 )}
               </div>

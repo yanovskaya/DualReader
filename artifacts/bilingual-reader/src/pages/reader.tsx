@@ -546,6 +546,7 @@ export default function ReaderPage() {
   const [showSearch, setShowSearch] = useState(false);
   const [showIllustration, setShowIllustration] = useState(false);
   const [currentChapterParaId, setCurrentChapterParaId] = useState<number | null>(null);
+  const [generatingParaIds, setGeneratingParaIds] = useState<Set<number>>(new Set());
   const [showHeader, setShowHeader] = useState(true);
   const [showTranslations, setShowTranslations] = useState(true);
 
@@ -685,6 +686,17 @@ export default function ReaderPage() {
       const url = `/api/books/${bookId}/chapters/${paragraphId}/generate-illustrations${force ? "?force=true" : ""}`;
       const res = await fetch(url, { method: "POST" });
       if (!res.ok) throw new Error("Failed to start generation");
+      return paragraphId;
+    },
+    onMutate: ({ paragraphId }) => {
+      setGeneratingParaIds(prev => new Set(prev).add(paragraphId));
+    },
+    onSettled: (_data, _err, { paragraphId }) => {
+      // Keep spinner until illustrationMap updates (query invalidation clears it)
+      // But cap at 5 min to avoid stuck spinner
+      setTimeout(() => setGeneratingParaIds(prev => {
+        const next = new Set(prev); next.delete(paragraphId); return next;
+      }), 5 * 60 * 1000);
     },
   });
 
@@ -1346,9 +1358,7 @@ export default function ReaderPage() {
           onGenerateIllustration={paraId => {
             generateChapterIllustrationMutation.mutate({ paragraphId: paraId });
           }}
-          onRegenerateIllustration={paraId => {
-            generateChapterIllustrationMutation.mutate({ paragraphId: paraId, force: true });
-          }}
+          generatingParaIds={generatingParaIds}
         />
       )}
 
@@ -1428,6 +1438,33 @@ export default function ReaderPage() {
             >
               <X size={18} />
             </button>
+
+            {/* Regenerate button — top left */}
+            {currentChapterParaId != null && (
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  generateChapterIllustrationMutation.mutate({ paragraphId: currentChapterParaId, force: true });
+                  setShowIllustration(false);
+                  setShowToc(true);
+                }}
+                title="Перегенерировать иллюстрации"
+                style={{
+                  position: "absolute", top: "env(safe-area-inset-top, 12px)", left: 12,
+                  zIndex: 2,
+                  width: 36, height: 36,
+                  borderRadius: "50%",
+                  background: "rgba(0,0,0,0.55)",
+                  border: "none", cursor: "pointer",
+                  color: "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)",
+                }}
+              >
+                <RefreshCw size={16} />
+              </button>
+            )}
 
             {/* Image — fills the whole screen */}
             {ilUrl ? (
