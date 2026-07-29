@@ -1,4 +1,4 @@
-import { Image } from "lucide-react";
+import { Image, Sparkles } from "lucide-react";
 import type { Chapter } from "@workspace/api-client-react/src/generated/api.schemas";
 import type { ThemeColors } from "@/hooks/use-reader-settings";
 
@@ -26,12 +26,13 @@ interface TocDrawerProps {
   currentChapterParaId: number | null;  // paragraph ID of current chapter
   illustrationMap: Map<number, string[]>; // paragraphId → array of imageUrls
   onShowIllustration: (paraId: number) => void;
+  onGenerateIllustration: (paraId: number) => void;  // for technical chapters without illustrations
 }
 
 export function TocDrawer({
   chapters, colors, fontSize, onNavigate, onClose,
   readingPct, totalParagraphs,
-  currentChapterParaId, illustrationMap, onShowIllustration,
+  currentChapterParaId, illustrationMap, onShowIllustration, onGenerateIllustration,
 }: TocDrawerProps) {
 
   // Use currentChapterParaId (set by scroll handler) for accurate highlighting
@@ -126,7 +127,13 @@ export function TocDrawer({
             const chPct = chapterReadPct(i);
             const isDone = chPct >= 1 && i < currentChapterIdx;
             const title = (ch as { originalText?: string }).originalText ?? "";
-            const hasIllustration = illustrationMap.size > 0 && !isNonChapter(title);
+            const technical = isNonChapter(title);
+            const hasIllustration = illustrationMap.get(ch.id)?.length ? true : false;
+            // Regular chapters: show image button only if illustrations exist
+            // Technical chapters: show image button if illustrations exist, OR generate button if none
+            const showImageBtn = !technical && illustrationMap.size > 0;
+            const showGenerateBtn = technical && !hasIllustration;
+            const showTechImageBtn = technical && hasIllustration;
 
             return (
               <div
@@ -190,8 +197,8 @@ export function TocDrawer({
                   </div>
                 </button>
 
-                {/* Illustration button — only if illustration exists for this chapter */}
-                {hasIllustration && (
+                {/* View illustration — regular chapters with illustrations */}
+                {(showImageBtn || showTechImageBtn) && (
                   <button
                     onClick={e => {
                       e.stopPropagation();
@@ -217,6 +224,35 @@ export function TocDrawer({
                     }}
                   >
                     <Image size={15} />
+                  </button>
+                )}
+
+                {/* Generate illustration — technical chapters without illustrations */}
+                {showGenerateBtn && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      onGenerateIllustration(ch.id);
+                    }}
+                    title="Сгенерировать иллюстрацию"
+                    style={{
+                      flexShrink: 0,
+                      width: 44, display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      color: colors.muted,
+                      borderLeft: `1px solid ${colors.border}`,
+                      transition: "color 0.15s, background 0.15s",
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLElement).style.color = colors.accent;
+                      (e.currentTarget as HTMLElement).style.background = `${colors.accent}10`;
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLElement).style.color = colors.muted;
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                    }}
+                  >
+                    <Sparkles size={14} />
                   </button>
                 )}
               </div>

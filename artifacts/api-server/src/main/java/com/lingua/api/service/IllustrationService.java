@@ -55,6 +55,39 @@ public class IllustrationService {
         });
     }
 
+    /**
+     * Schedules illustration generation for a single chapter (identified by paragraphId).
+     * Works for any heading paragraph, including "technical" chapters like Chapter Notes.
+     * Skips if the chapter already has MAX_SCENES_PER_CHAPTER illustrations.
+     */
+    public void scheduleForChapter(Integer bookId, Integer paragraphId) {
+        executor.submit(() -> {
+            try {
+                List<Paragraph> all = paragraphRepo.findByBookIdOrderByPosition(bookId);
+                Paragraph heading = all.stream()
+                        .filter(p -> p.getId().equals(paragraphId))
+                        .findFirst()
+                        .orElse(null);
+                if (heading == null) {
+                    log.warn("Book {}: paragraph {} not found for single-chapter generation", bookId, paragraphId);
+                    return;
+                }
+                long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, paragraphId);
+                if (existing >= MAX_SCENES_PER_CHAPTER) {
+                    log.info("Book {}: chapter '{}' already has {} illustrations, skipping",
+                            bookId, heading.getOriginalText(), existing);
+                    return;
+                }
+                log.info("Book {}: generating illustrations for single chapter '{}'", bookId, heading.getOriginalText());
+                String fullText = extractFullChapter(all, heading);
+                generateScenesForChapter(bookId, heading, fullText, (int) existing);
+                log.info("Book {}: single-chapter generation complete for '{}'", bookId, heading.getOriginalText());
+            } catch (Exception e) {
+                log.warn("Book {}: single-chapter generation failed for paragraph {}: {}", bookId, paragraphId, e.getMessage());
+            }
+        });
+    }
+
     private void generateForBook(Integer bookId) {
         List<Paragraph> all = paragraphRepo.findByBookIdOrderByPosition(bookId);
         if (all.isEmpty()) return;

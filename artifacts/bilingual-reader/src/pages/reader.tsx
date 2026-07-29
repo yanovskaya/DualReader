@@ -680,6 +680,13 @@ export default function ReaderPage() {
     },
   });
 
+  const generateChapterIllustrationMutation = useMutation({
+    mutationFn: async (paragraphId: number) => {
+      const res = await fetch(`/api/books/${bookId}/chapters/${paragraphId}/generate-illustrations`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to start generation");
+    },
+  });
+
   // Background prefetch ALL paragraph batches for offline use.
   // Re-runs when translation status changes (e.g. "translating" → "completed")
   // so IDB always ends up with the fully-translated version.
@@ -1333,6 +1340,10 @@ export default function ReaderPage() {
           onShowIllustration={paraId => {
             setCurrentChapterParaId(paraId);
             setShowIllustration(true);
+            setShowToc(false);
+          }}
+          onGenerateIllustration={paraId => {
+            generateChapterIllustrationMutation.mutate(paraId);
             setShowToc(false);
           }}
         />

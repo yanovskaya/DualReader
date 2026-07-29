@@ -70,4 +70,14 @@ public class IllustrationController {
         return ResponseEntity.ok(Map.of("status", "stopping"));
     }
 
+    // POST /books/:id/chapters/:paragraphId/generate-illustrations
+    // Generate illustrations for a single chapter (including technical ones like Chapter Notes)
+    @PostMapping("/books/{id}/chapters/{paragraphId}/generate-illustrations")
+    public ResponseEntity<?> generateForChapter(
+            @PathVariable Integer id,
+            @PathVariable Integer paragraphId) {
+        illustrationService.scheduleForChapter(id, paragraphId);
+        return ResponseEntity.accepted().body(Map.of("status", "generating"));
+    }
+
 }
