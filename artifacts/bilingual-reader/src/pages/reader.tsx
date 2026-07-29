@@ -547,6 +547,9 @@ export default function ReaderPage() {
   const [showIllustration, setShowIllustration] = useState(false);
   const [currentChapterParaId, setCurrentChapterParaId] = useState<number | null>(null);
   const [generatingParaIds, setGeneratingParaIds] = useState<Set<number>>(new Set());
+  // minClearTime: for force-regen we wait ≥8s before accepting a non-zero count
+  // (gives the backend time to delete old illustrations before new ones arrive)
+  const minClearTimeRef = useRef<Map<number, number>>(new Map());
   const [showHeader, setShowHeader] = useState(true);
   const [showTranslations, setShowTranslations] = useState(true);
 
@@ -638,7 +641,8 @@ export default function ReaderPage() {
     query: {
       enabled: !!bookId && !!bookOnline,
       queryKey: [`/api/books/${bookId}/chapter-illustrations`],
-      refetchInterval: 30000, // re-check as illustrations generate
+      // Poll fast while any chapter is generating, otherwise every 30s
+      refetchInterval: generatingParaIds.size > 0 ? 5000 : 30000,
     },
   });
 
@@ -669,6 +673,24 @@ export default function ReaderPage() {
     return map;
   }, [illustrationsData]);
 
+  // Auto-clear generatingParaIds when new illustrations appear in the map
+  useEffect(() => {
+    if (generatingParaIds.size === 0) return;
+    const now = Date.now();
+    let changed = false;
+    const next = new Set(generatingParaIds);
+    for (const paraId of generatingParaIds) {
+      const count = illustrationMap.get(paraId)?.length ?? 0;
+      const minTime = minClearTimeRef.current.get(paraId) ?? 0;
+      if (count > 0 && now >= minTime) {
+        next.delete(paraId);
+        minClearTimeRef.current.delete(paraId);
+        changed = true;
+      }
+    }
+    if (changed) setGeneratingParaIds(next);
+  }, [illustrationMap]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Carousel index per chapter (resets when chapter changes)
   const [illustrationIndex, setIllustrationIndex] = useState(0);
   useEffect(() => { setIllustrationIndex(0); }, [currentChapterParaId]);
@@ -688,15 +710,19 @@ export default function ReaderPage() {
       if (!res.ok) throw new Error("Failed to start generation");
       return paragraphId;
     },
-    onMutate: ({ paragraphId }) => {
+    onMutate: ({ paragraphId, force = false }) => {
       setGeneratingParaIds(prev => new Set(prev).add(paragraphId));
+      // Force-regen: backend deletes first, then generates new ones.
+      // Wait ≥8s before accepting a non-zero count so we don't mistake
+      // the old illustrations (still present briefly) for the new ones.
+      minClearTimeRef.current.set(paragraphId, force ? Date.now() + 8000 : 0);
     },
     onSettled: (_data, _err, { paragraphId }) => {
-      // Keep spinner until illustrationMap updates (query invalidation clears it)
-      // But cap at 5 min to avoid stuck spinner
-      setTimeout(() => setGeneratingParaIds(prev => {
-        const next = new Set(prev); next.delete(paragraphId); return next;
-      }), 5 * 60 * 1000);
+      // Safety fallback: clear spinner after 10 min even if server never responds
+      setTimeout(() => {
+        setGeneratingParaIds(prev => { const s = new Set(prev); s.delete(paragraphId); return s; });
+        minClearTimeRef.current.delete(paragraphId);
+      }, 10 * 60 * 1000);
     },
   });
 
