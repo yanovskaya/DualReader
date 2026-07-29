@@ -550,9 +550,10 @@ export default function ReaderPage() {
   // doesn't change the TOC scroll-based highlight
   const [viewingIllustrationParaId, setViewingIllustrationParaId] = useState<number | null>(null);
   const [generatingParaIds, setGeneratingParaIds] = useState<Set<number>>(new Set());
-  // minClearTime: for force-regen we wait ≥8s before accepting a non-zero count
-  // (gives the backend time to delete old illustrations before new ones arrive)
-  const minClearTimeRef = useRef<Map<number, number>>(new Map());
+  // For force-regen: track which paraIds must first see count=0 (deletion confirmed)
+  // before the spinner can be cleared on count>0 (new images arrived).
+  // For fresh generation: paraId is NOT in this set → clear as soon as count>0.
+  const forceRegenPendingZeroRef = useRef<Set<number>>(new Set());
   const [showHeader, setShowHeader] = useState(true);
   const [showTranslations, setShowTranslations] = useState(true);
 
@@ -676,19 +677,30 @@ export default function ReaderPage() {
     return map;
   }, [illustrationsData]);
 
-  // Auto-clear generatingParaIds when new illustrations appear in the map
+  // Auto-clear generatingParaIds when new illustrations appear in the map.
+  // For force-regen: the count must first drop to 0 (deletion confirmed on backend)
+  // before we accept a non-zero count as "new images arrived".
+  // This prevents mistaking the old still-present images for the new ones
+  // when the executor thread is busy and hasn't started the deletion yet.
   useEffect(() => {
     if (generatingParaIds.size === 0) return;
-    const now = Date.now();
     let changed = false;
     const next = new Set(generatingParaIds);
     for (const paraId of generatingParaIds) {
       const count = illustrationMap.get(paraId)?.length ?? 0;
-      const minTime = minClearTimeRef.current.get(paraId) ?? 0;
-      if (count > 0 && now >= minTime) {
-        next.delete(paraId);
-        minClearTimeRef.current.delete(paraId);
-        changed = true;
+      if (forceRegenPendingZeroRef.current.has(paraId)) {
+        // Force regen: wait for count to hit 0 first
+        if (count === 0) {
+          // Deletion confirmed — now waiting for new images
+          forceRegenPendingZeroRef.current.delete(paraId);
+        }
+        // Don't clear spinner yet regardless of count
+      } else {
+        // Fresh generation (or force regen that already saw 0): clear when images arrive
+        if (count > 0) {
+          next.delete(paraId);
+          changed = true;
+        }
       }
     }
     if (changed) setGeneratingParaIds(next);
@@ -715,17 +727,17 @@ export default function ReaderPage() {
     },
     onMutate: ({ paragraphId, force = false }) => {
       setGeneratingParaIds(prev => new Set(prev).add(paragraphId));
-      // Force-regen: backend deletes first, then generates new ones.
-      // Wait ≥8s before accepting a non-zero count so we don't mistake
-      // the old illustrations (still present briefly) for the new ones.
-      minClearTimeRef.current.set(paragraphId, force ? Date.now() + 8000 : 0);
+      if (force) {
+        // Must see count drop to 0 first (deletion confirmed) before clearing spinner
+        forceRegenPendingZeroRef.current.add(paragraphId);
+      }
     },
     onSettled: (_data, _err, { paragraphId }) => {
-      // Safety fallback: clear spinner after 10 min even if server never responds
+      // Safety fallback: clear spinner after 15 min even if server never responds
       setTimeout(() => {
         setGeneratingParaIds(prev => { const s = new Set(prev); s.delete(paragraphId); return s; });
-        minClearTimeRef.current.delete(paragraphId);
-      }, 10 * 60 * 1000);
+        forceRegenPendingZeroRef.current.delete(paragraphId);
+      }, 15 * 60 * 1000);
     },
   });
 
