@@ -4,7 +4,7 @@ import com.lingua.api.model.Book;
 import com.lingua.api.service.BookService;
 import com.lingua.api.service.CoverService;
 import com.lingua.api.service.EpubParser;
-import com.lingua.api.service.IllustrationService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +21,6 @@ public class UploadController {
     private final BookService bookService;
     private final CoverService coverService;
     private final EpubParser epubParser;
-    private final IllustrationService illustrationService;
 
     // POST /books/upload
     @PostMapping("/books/upload")
