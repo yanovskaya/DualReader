@@ -26,7 +26,7 @@ import java.util.Set;
 public class IllustrationService {
 
     private static final Logger log = LoggerFactory.getLogger(IllustrationService.class);
-    private static final int MAX_SCENES_PER_CHAPTER = 5;
+    private static final int MAX_SCENES_PER_CHAPTER = 8;
     // Single thread so two books don't race each other on rate limits
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -254,7 +254,8 @@ public class IllustrationService {
                         "\n\nYour task:\n" +
                         "1. Read the chapter carefully and understand the full arc of events.\n" +
                         "2. Choose between 1 and " + maxScenes + " scenes to illustrate " +
-                        "(short/transitional chapters → 1–2; medium → 2–3; long/rich → 4–5). " +
+                        "(short/transitional chapters → 1–2; medium → 3–4; long/rich chapters → 5–8). " +
+                        "Prioritize the most dramatic, emotional, and visually interesting moments. " +
                         "Spread the scenes across the chapter — beginning, middle, end. " +
                         "Each scene must depict a DIFFERENT event or moment.\n" +
                         "3. For each chosen scene, write one complete image generation prompt (100–150 words). " +
