@@ -257,7 +257,7 @@ public class IllustrationService {
                 "Teenagers (13–17) look like real teenagers — not children, not adults. " +
                 "Young adults (18–25) look young but fully grown. Always include exact age in the prompt.";
 
-            String raw = openAiService.complete("gpt-4.1-mini", 1800,
+            String raw = openAiService.complete("gpt-4.1-mini", 6000,
                 List.of(
                     Map.of("role", "system", "content",
                         "You are both an art director and an AI image prompt engineer. " +
@@ -280,9 +280,19 @@ public class IllustrationService {
                 )
             );
 
+            log.info("GPT raw response for '{}': {}", chapterTitle,
+                raw.length() > 500 ? raw.substring(0, 500) + "..." : raw);
+
             String trimmed = raw.strip();
+            // Strip markdown code fences if present
             if (trimmed.startsWith("```")) {
-                trimmed = trimmed.replaceAll("(?s)^```[a-z]*\\n?", "").replaceAll("```$", "").strip();
+                trimmed = trimmed.replaceAll("(?s)^```[a-zA-Z]*\\n?", "").replaceAll("(?s)```\\s*$", "").strip();
+            }
+            // If GPT wrapped the array in an object, try to extract the array
+            if (!trimmed.startsWith("[")) {
+                int start = trimmed.indexOf('[');
+                int end   = trimmed.lastIndexOf(']');
+                if (start >= 0 && end > start) trimmed = trimmed.substring(start, end + 1);
             }
             ObjectMapper mapper = new ObjectMapper();
             @SuppressWarnings("unchecked")
@@ -291,7 +301,8 @@ public class IllustrationService {
             log.info("GPT generated {} image prompts for chapter '{}'", prompts.size(), chapterTitle);
             return prompts;
         } catch (Exception e) {
-            log.warn("Image prompt generation failed for '{}': {}", chapterTitle, e.getMessage());
+            log.warn("Image prompt generation failed for '{}': {} — {}", chapterTitle,
+                e.getClass().getSimpleName(), e.getMessage());
             return List.of();
         }
     }
