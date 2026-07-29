@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,6 +41,7 @@ public class IllustrationService {
     private final OpenAiService openAiService;
     private final ParagraphRepository paragraphRepo;
     private final ChapterIllustrationRepository illustrationRepo;
+    private final TransactionTemplate transactionTemplate;
 
     /**
      * Schedules async illustration generation for all chapters of a book.
@@ -74,7 +76,11 @@ public class IllustrationService {
                     return;
                 }
                 if (force) {
-                    illustrationRepo.deleteByBookIdAndParagraphId(bookId, paragraphId);
+                    // @Modifying queries need a transaction; executor thread has none → use TransactionTemplate
+                    transactionTemplate.execute(status -> {
+                        illustrationRepo.deleteByBookIdAndParagraphId(bookId, paragraphId);
+                        return null;
+                    });
                     log.info("Book {}: cleared illustrations for chapter '{}' (force regenerate)", bookId, heading.getOriginalText());
                 }
                 long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, paragraphId);
