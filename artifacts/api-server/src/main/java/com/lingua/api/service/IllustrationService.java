@@ -217,7 +217,8 @@ public class IllustrationService {
                         "Spread them across the chapter arc — e.g. for 3 scenes: one from the beginning, one from the middle, one from the end. " +
                         "Do NOT pick two scenes from the same moment or the same event. " +
                         "Return them in chronological order (as they appear in the chapter). " +
-                        "For each scene write a brief (max 60 words): character NAMES and appearance, setting, mood, one specific dramatic action or emotional beat. " +
+                        "For each scene write a brief (max 60 words): character NAMES, their EXACT AGE (e.g. '16-year-old', '35-year-old'), physical appearance, setting, mood, one specific dramatic action or emotional beat. " +
+                        "Age is mandatory — always state it explicitly so the illustrator draws characters at their correct age. " +
                         "Return a JSON array of strings ONLY, e.g. [\"brief1\", \"brief2\"]. No other text."),
                     Map.of("role", "user", "content",
                         "Chapter: " + chapterTitle + "\n\n" +
@@ -273,8 +274,11 @@ public class IllustrationService {
             "No text, no letters, no watermarks.";
 
         String ageGuard =
-            "IMPORTANT: If characters are 17-18 years old, they are fully mature teenagers/young adults, NOT children. " +
-            "All characters must look their stated age and be attractive and pleasant-looking.";
+            "IMPORTANT: Draw every character at their EXACT stated age. " +
+            "A 14-year-old must look 14; a 30-year-old must look 30. " +
+            "Teenagers (13–17) look like real teenagers — not children and not adults. " +
+            "Young adults (18–25) look young but fully grown. " +
+            "All characters must be attractive and pleasant-looking for their age.";
 
         if (sceneBrief != null && !sceneBrief.isBlank()) {
             return String.format("Interior chapter illustration. %s. %s %s",
