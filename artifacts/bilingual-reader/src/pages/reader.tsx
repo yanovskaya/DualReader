@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import {
   useGetBook,
@@ -17,7 +17,7 @@ import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
 import type { CachedBook } from "@/lib/idb";
 import type { Paragraph } from "@workspace/api-client-react/src/generated/api.schemas";
-import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark, ImageIcon, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Loader2, ArrowLeft, X, Settings2, List, EyeOff, Search, Bookmark, ImageIcon, ChevronLeft, ChevronRight, RefreshCw, Square } from "lucide-react";
 import { BookParagraph } from "@/components/book-paragraph";
 import { isHeadingParagraph } from "@/lib/sentences";
 import { TocDrawer } from "@/components/toc-drawer";
@@ -172,6 +172,7 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
   onRegenerateIllustrations?: () => void;
   isRegenerating?: boolean;
   illustrationStatus?: { isGenerating: boolean; doneChapters: number; totalChapters: number; savedIllustrations: number } | null;
+  onStopIllustrations?: () => void;
 }) {
   const row = { display: "flex", flexDirection: "column" as const, gap: 8, marginBottom: 20 };
   const label = { fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: colors.muted, marginBottom: 4 };
@@ -310,7 +311,7 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
         {/* Regenerate illustrations */}
         {onRegenerateIllustrations && (
           <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 4, paddingTop: 20, display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Progress bar — shown when generating or when we have status data */}
+            {/* Progress bar */}
             {illustrationStatus && (illustrationStatus.isGenerating || illustrationStatus.savedIllustrations > 0) && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -336,8 +337,31 @@ function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFo
                 )}
               </div>
             )}
+
+            {/* Stop button — only while generating */}
+            {(isRegenerating || illustrationStatus?.isGenerating) && onStopIllustrations && (
+              <button
+                onClick={onStopIllustrations}
+                style={{
+                  width: "100%", padding: "11px 16px",
+                  borderRadius: 12,
+                  border: `1.5px solid ${colors.border}`,
+                  background: "transparent",
+                  color: colors.text,
+                  fontSize: 14, fontWeight: 500,
+                  cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  transition: "background 0.15s",
+                }}
+              >
+                <Square size={14} fill="currentColor" />
+                Остановить генерацию
+              </button>
+            )}
+
+            {/* Regenerate button — show loader immediately on click, don't close sheet */}
             <button
-              onClick={() => { onRegenerateIllustrations(); onClose(); }}
+              onClick={() => { if (!isRegenerating && !illustrationStatus?.isGenerating) onRegenerateIllustrations(); }}
               disabled={isRegenerating || illustrationStatus?.isGenerating}
               style={{
                 width: "100%", padding: "11px 16px",
@@ -647,6 +671,13 @@ export default function ReaderPage() {
   const [illustrationIndex, setIllustrationIndex] = useState(0);
   useEffect(() => { setIllustrationIndex(0); }, [currentChapterParaId]);
   const regenerateIllustrationsMutation = useGenerateIllustrations();
+
+  const stopIllustrationsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/books/${bookId}/stop-illustrations`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to stop");
+    },
+  });
 
   // Background prefetch ALL paragraph batches for offline use.
   // Re-runs when translation status changes (e.g. "translating" → "completed")
@@ -1331,6 +1362,7 @@ export default function ReaderPage() {
           } : undefined}
           isRegenerating={regenerateIllustrationsMutation.isPending}
           illustrationStatus={illustrationStatus}
+          onStopIllustrations={bookId ? () => stopIllustrationsMutation.mutate() : undefined}
         />
       )}
 

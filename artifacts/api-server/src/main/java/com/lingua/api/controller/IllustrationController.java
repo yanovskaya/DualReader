@@ -63,4 +63,11 @@ public class IllustrationController {
         return ResponseEntity.accepted().body(Map.of("status", "generating"));
     }
 
+    // POST /books/:id/stop-illustrations — stop active generation
+    @PostMapping("/books/{id}/stop-illustrations")
+    public ResponseEntity<?> stopIllustrations(@PathVariable Integer id) {
+        illustrationService.stopGeneration(id);
+        return ResponseEntity.ok(Map.of("status", "stopping"));
+    }
+
 }

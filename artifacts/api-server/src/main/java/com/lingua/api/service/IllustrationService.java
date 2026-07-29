@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +32,9 @@ public class IllustrationService {
 
     // In-memory progress tracking: bookId → [doneChapters, totalChapters, isGenerating(0/1)]
     private static final ConcurrentHashMap<Integer, int[]> progressMap = new ConcurrentHashMap<>();
+
+    // Stop flags: if a bookId is present, the running generation should abort
+    private static final Set<Integer> stopFlags = ConcurrentHashMap.newKeySet();
 
     private final GeminiService geminiService;
     private final OpenAiService openAiService;
@@ -76,14 +80,21 @@ public class IllustrationService {
         log.info("Book {}: generating illustrations for {} chapters (up to {} scenes each)",
                 bookId, unique.size(), MAX_SCENES_PER_CHAPTER);
 
+        stopFlags.remove(bookId);
         progressMap.put(bookId, new int[]{0, unique.size(), 1});
 
         for (Paragraph heading : unique) {
+            if (stopFlags.contains(bookId)) {
+                log.info("Book {}: generation stopped by user after {} chapters", bookId,
+                        progressMap.getOrDefault(bookId, new int[]{0})[0]);
+                break;
+            }
             try {
                 long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, heading.getId());
                 if (existing >= MAX_SCENES_PER_CHAPTER) {
                     log.debug("Book {}: chapter '{}' already has {} illustrations, skipping",
                             bookId, heading.getOriginalText(), existing);
+                    progressMap.computeIfPresent(bookId, (k, v) -> { v[0]++; return v; });
                     continue;
                 }
 
@@ -100,18 +111,43 @@ public class IllustrationService {
             }
         }
 
+        stopFlags.remove(bookId);
         progressMap.computeIfPresent(bookId, (k, v) -> { v[2] = 0; return v; });
         log.info("Book {}: illustration generation complete", bookId);
     }
 
     private String extractExcerpt(List<Paragraph> all, Paragraph heading) {
-        return all.stream()
-                .filter(p -> p.getPosition() > heading.getPosition()
-                        && p.getPosition() <= heading.getPosition() + 12
-                        && !BookService.isHeading(p.getOriginalText()))
-                .limit(8)
-                .map(Paragraph::getOriginalText)
-                .collect(Collectors.joining("\n\n"));
+        // Collect ALL body paragraphs in this chapter (until the next heading)
+        List<String> body = new ArrayList<>();
+        for (Paragraph p : all) {
+            if (p.getPosition() <= heading.getPosition()) continue;
+            if (BookService.isHeading(p.getOriginalText())) break;
+            String text = p.getOriginalText().trim();
+            if (!text.isEmpty()) body.add(text);
+        }
+
+        if (body.isEmpty()) return "";
+        if (body.size() <= 9) return String.join("\n\n", body);
+
+        // Sample beginning + middle + end so GPT sees the full arc
+        List<String> sampled = new ArrayList<>();
+        int n = body.size();
+
+        // First 3
+        sampled.addAll(body.subList(0, 3));
+        sampled.add("[...]");
+
+        // Middle 3
+        int mid = n / 2;
+        int mFrom = Math.max(3, mid - 1);
+        int mTo   = Math.min(n - 3, mid + 2);
+        if (mFrom < mTo) sampled.addAll(body.subList(mFrom, mTo));
+        sampled.add("[...]");
+
+        // Last 3
+        sampled.addAll(body.subList(n - 3, n));
+
+        return String.join("\n\n", sampled);
     }
 
     /**
@@ -164,28 +200,28 @@ public class IllustrationService {
     }
 
     /**
-     * Asks GPT to autonomously decide how many key scenes (1–5) to illustrate
-     * based on chapter length and narrative richness, then returns their briefs.
+     * Asks GPT to identify N distinct key scenes from DIFFERENT parts of the chapter,
+     * in chronological order, for sequential illustration.
      */
     private List<String> identifyKeyScenes(String chapterTitle, String excerpt, int maxScenes) {
         if (excerpt.isBlank()) return List.of();
         try {
-            String raw = openAiService.complete("gpt-4.1-nano", 500,
+            String raw = openAiService.complete("gpt-4.1-nano", 600,
                 List.of(
                     Map.of("role", "system", "content",
-                        "You are an art director for a book illustration. " +
-                        "Given a chapter excerpt, decide yourself how many key scenes to illustrate (between 1 and " + maxScenes + "). " +
-                        "Use chapter length and narrative richness as your guide: " +
-                        "short or transitional chapters → 1–2 scenes; " +
-                        "medium chapters with a clear arc → 2–3 scenes; " +
-                        "long, action-packed or emotionally dense chapters → 4–5 scenes. " +
-                        "For each chosen scene write a brief (max 60 words): include character NAMES and appearance, " +
-                        "setting, mood, and one dramatic action or emotional moment. Be concrete and cinematic. " +
-                        "Return a JSON array of strings (the briefs), e.g. [\"brief1\", \"brief2\"]. " +
-                        "Return ONLY the JSON array, no other text."),
+                        "You are an art director choosing scenes from a book chapter to illustrate sequentially. " +
+                        "The excerpt uses [...] to mark skipped passages — the chapter is longer than what is shown. " +
+                        "Decide how many scenes to illustrate (1 to " + maxScenes + "): " +
+                        "short/transitional chapters → 1–2; medium chapters → 2–3; long/rich chapters → 4–5. " +
+                        "CRITICAL RULE: Each scene MUST come from a DIFFERENT part of the chapter. " +
+                        "Spread them across the chapter arc — e.g. for 3 scenes: one from the beginning, one from the middle, one from the end. " +
+                        "Do NOT pick two scenes from the same moment or the same event. " +
+                        "Return them in chronological order (as they appear in the chapter). " +
+                        "For each scene write a brief (max 60 words): character NAMES and appearance, setting, mood, one specific dramatic action or emotional beat. " +
+                        "Return a JSON array of strings ONLY, e.g. [\"brief1\", \"brief2\"]. No other text."),
                     Map.of("role", "user", "content",
                         "Chapter: " + chapterTitle + "\n\n" +
-                        excerpt.substring(0, Math.min(1200, excerpt.length())))
+                        excerpt.substring(0, Math.min(2000, excerpt.length())))
                 )
             );
 
@@ -286,7 +322,17 @@ public class IllustrationService {
     /** Force-clears existing illustrations for a book and re-schedules generation. */
     @Transactional
     public void forceRegenerateForBook(Integer bookId) {
+        stopFlags.add(bookId); // stop any running generation first
         illustrationRepo.deleteByBookId(bookId);
+        // Give the running thread a moment to notice the stop flag before we clear it
+        try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         scheduleForBook(bookId);
+    }
+
+    /** Signals any active generation for this book to stop after the current scene. */
+    public void stopGeneration(Integer bookId) {
+        stopFlags.add(bookId);
+        progressMap.computeIfPresent(bookId, (k, v) -> { v[2] = 0; return v; });
+        log.info("Book {}: stop requested", bookId);
     }
 }
