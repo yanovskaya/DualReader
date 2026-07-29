@@ -1,13 +1,14 @@
-import { Image, Sparkles, Loader2 } from "lucide-react";
+import { Image, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import type { Chapter } from "@workspace/api-client-react/src/generated/api.schemas";
 import type { ThemeColors } from "@/hooks/use-reader-settings";
 
 // Shared icon button helpers to avoid repetition
-function iconBtnStyle(colors: ThemeColors): React.CSSProperties {
+function iconBtnStyle(colors: ThemeColors, borderLeft = true): React.CSSProperties {
   return {
-    flexShrink: 0, width: 40, display: "flex", alignItems: "center", justifyContent: "center",
+    flexShrink: 0, width: 36, display: "flex", alignItems: "center", justifyContent: "center",
     background: "transparent", border: "none", cursor: "pointer", color: colors.muted,
-    borderLeft: `1px solid ${colors.border}`, transition: "color 0.15s, background 0.15s",
+    borderLeft: borderLeft ? `1px solid ${colors.border}` : "none",
+    transition: "color 0.15s, background 0.15s",
   };
 }
 function hoverOn(e: React.MouseEvent, colors: ThemeColors) {
@@ -43,14 +44,16 @@ interface TocDrawerProps {
   currentChapterParaId: number | null;  // paragraph ID of current chapter
   illustrationMap: Map<number, string[]>; // paragraphId → array of imageUrls
   onShowIllustration: (paraId: number) => void;
-  onGenerateIllustration: (paraId: number) => void;  // tap ✨ → starts generation, keeps TOC open
-  generatingParaIds: Set<number>;                    // shows spinner while generating
+  onGenerateIllustration: (paraId: number) => void;    // ✨ → generate, keeps TOC open
+  onRegenerateIllustration: (paraId: number) => void;  // 🔄 → force-regen, keeps TOC open
+  generatingParaIds: Set<number>;                      // shows spinner while generating
 }
 
 export function TocDrawer({
   chapters, colors, fontSize, onNavigate, onClose,
   readingPct, totalParagraphs,
-  currentChapterParaId, illustrationMap, onShowIllustration, onGenerateIllustration, generatingParaIds,
+  currentChapterParaId, illustrationMap, onShowIllustration,
+  onGenerateIllustration, onRegenerateIllustration, generatingParaIds,
 }: TocDrawerProps) {
 
   // Use currentChapterParaId (set by scroll handler) for accurate highlighting
@@ -209,25 +212,36 @@ export function TocDrawer({
                   </div>
                 </button>
 
-                {/* Single right-side action button */}
+                {/* Right-side action buttons */}
                 {generatingParaIds.has(ch.id) ? (
-                  /* Generating — show spinner */
+                  /* Generating — spinner (single slot) */
                   <div style={{ ...iconBtnStyle(colors), cursor: "default", color: colors.accent }}>
                     <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
                   </div>
                 ) : hasIllustration ? (
-                  /* Has illustrations — tap to view */
-                  <button
-                    onClick={e => { e.stopPropagation(); onShowIllustration(ch.id); onClose(); }}
-                    title="Посмотреть иллюстрации"
-                    style={iconBtnStyle(colors)}
-                    onMouseEnter={e => hoverOn(e, colors)}
-                    onMouseLeave={e => hoverOff(e, colors)}
-                  >
-                    <Image size={15} />
-                  </button>
+                  /* Has illustrations — 🖼 view + 🔄 regenerate */
+                  <>
+                    <button
+                      onClick={e => { e.stopPropagation(); onShowIllustration(ch.id); onClose(); }}
+                      title="Посмотреть иллюстрации"
+                      style={iconBtnStyle(colors)}
+                      onMouseEnter={e => hoverOn(e, colors)}
+                      onMouseLeave={e => hoverOff(e, colors)}
+                    >
+                      <Image size={14} />
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); onRegenerateIllustration(ch.id); }}
+                      title="Перегенерировать иллюстрации"
+                      style={iconBtnStyle(colors)}
+                      onMouseEnter={e => hoverOn(e, colors)}
+                      onMouseLeave={e => hoverOff(e, colors)}
+                    >
+                      <RefreshCw size={13} />
+                    </button>
+                  </>
                 ) : (
-                  /* No illustrations — tap to generate (keeps TOC open) */
+                  /* No illustrations — ✨ generate (keeps TOC open) */
                   <button
                     onClick={e => { e.stopPropagation(); onGenerateIllustration(ch.id); }}
                     title="Сгенерировать иллюстрации"

@@ -1358,6 +1358,9 @@ export default function ReaderPage() {
           onGenerateIllustration={paraId => {
             generateChapterIllustrationMutation.mutate({ paragraphId: paraId });
           }}
+          onRegenerateIllustration={paraId => {
+            generateChapterIllustrationMutation.mutate({ paragraphId: paraId, force: true });
+          }}
           generatingParaIds={generatingParaIds}
         />
       )}
