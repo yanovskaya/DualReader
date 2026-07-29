@@ -57,7 +57,7 @@ export function DictionaryCard({
   // Treat "перевод недоступен" as a retriable failure (server returned it when AI was unavailable)
   const isFallback = !!entry?.translations?.some(t => t === "перевод недоступен");
 
-  const retry = () => {
+  const refresh = () => {
     queryClient.removeQueries({ queryKey });
   };
 
@@ -77,23 +77,21 @@ export function DictionaryCard({
           <BookOpen size={14} style={{ flexShrink: 0 }} />
           <span>{isFallback ? "ИИ сейчас недоступен" : `Не найдено для «${word}»`}</span>
         </div>
-        {isFallback && (
-          <button
-            onClick={retry}
-            style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: accentColor, fontSize: 12, padding: "2px 4px" }}
-          >
-            <RefreshCw size={12} />
-            Повторить
-          </button>
-        )}
+        <button
+          onClick={refresh}
+          style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: accentColor, fontSize: 12, padding: "2px 4px" }}
+        >
+          <RefreshCw size={12} />
+          Повторить
+        </button>
       </div>
     );
   }
 
   return (
     <div style={{ fontSize: 14, lineHeight: 1.55 }}>
-      {/* Header: word + transcription + part of speech */}
-      <div style={{ padding: "10px 14px 8px", borderBottom: `1px solid ${borderColor}`, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+      {/* Header: word + transcription + part of speech + refresh button */}
+      <div style={{ padding: "10px 14px 8px", borderBottom: `1px solid ${borderColor}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 700, fontSize: 16, color: textColor, fontFamily: "Georgia, serif" }}>
           {entry.word}
         </span>
@@ -103,10 +101,19 @@ export function DictionaryCard({
           </span>
         )}
         {entry.partOfSpeech && (
-          <span style={{ fontSize: 11, color: mutedColor, fontStyle: "italic", marginLeft: "auto" }}>
+          <span style={{ fontSize: 11, color: mutedColor, fontStyle: "italic" }}>
             {entry.partOfSpeech}
           </span>
         )}
+        <button
+          onClick={refresh}
+          title="Перегенерировать перевод"
+          style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: mutedColor, padding: 2, borderRadius: 4, flexShrink: 0 }}
+          onMouseEnter={e => (e.currentTarget.style.color = accentColor)}
+          onMouseLeave={e => (e.currentTarget.style.color = mutedColor)}
+        >
+          <RefreshCw size={13} />
+        </button>
       </div>
 
       <div style={{ padding: "8px 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>

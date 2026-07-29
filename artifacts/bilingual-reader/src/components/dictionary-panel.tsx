@@ -1,5 +1,6 @@
 import { useLookupWord, getLookupWordQueryKey } from "@workspace/api-client-react";
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface DictionaryPanelProps {
   word: string;
@@ -13,11 +14,15 @@ interface DictionaryPanelProps {
 
 export function DictionaryPanel({ word, context, onClose, inline, textColor = "#1a1a1a", mutedColor = "#6b7280", accentColor = "#059669" }: DictionaryPanelProps) {
   const clean = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
+  const queryClient = useQueryClient();
+  const queryKey = getLookupWordQueryKey({ word: clean, context });
 
   const { data: entry, isLoading, isError } = useLookupWord(
     { word: clean, context },
-    { query: { enabled: !!clean, queryKey: getLookupWordQueryKey({ word: clean, context }) } }
+    { query: { enabled: !!clean, queryKey } }
   );
+
+  const refresh = () => queryClient.removeQueries({ queryKey });
 
   const content = () => {
     if (isLoading) return (
@@ -68,6 +73,13 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
         <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: "0.35em" }} />
         <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", flex: 1 }}>{content()}</p>
+        <button
+          onClick={refresh}
+          title="Перегенерировать"
+          style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: mutedColor, flexShrink: 0 }}
+        >
+          <RefreshCw size={11} />
+        </button>
       </div>
     );
   }
@@ -76,6 +88,13 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
     <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
       <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: "0.35em" }} />
       <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", flex: 1 }}>{content()}</p>
+      <button
+        onClick={refresh}
+        title="Перегенерировать"
+        style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: mutedColor, flexShrink: 0 }}
+      >
+        <RefreshCw size={11} />
+      </button>
       <button
         onClick={onClose}
         style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: mutedColor, flexShrink: 0 }}

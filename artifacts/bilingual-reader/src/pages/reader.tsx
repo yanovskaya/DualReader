@@ -100,7 +100,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 22, fontWeight: 700, color: colors.heading, fontFamily: "Georgia, serif" }}>
           {entry.word}
         </span>
@@ -114,6 +114,15 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
             {entry.partOfSpeech}
           </span>
         )}
+        <button
+          onClick={() => refetch()}
+          title="Перегенерировать перевод"
+          style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", cursor: "pointer", color: colors.muted, padding: 4, borderRadius: 6, flexShrink: 0 }}
+          onMouseEnter={e => (e.currentTarget.style.color = colors.accent)}
+          onMouseLeave={e => (e.currentTarget.style.color = colors.muted)}
+        >
+          <RefreshCw size={15} />
+        </button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
