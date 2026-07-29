@@ -182,6 +182,11 @@ public class IllustrationService {
         }
 
         for (int i = 0; i < sceneBriefs.size(); i++) {
+            if (stopFlags.contains(bookId)) {
+                log.info("Book {}: stop flag detected mid-chapter '{}', aborting remaining scenes",
+                        bookId, heading.getOriginalText());
+                return;
+            }
             try {
                 String brief = sceneBriefs.get(i);
                 String prompt = buildIllustrationPrompt(heading.getOriginalText(), brief);
