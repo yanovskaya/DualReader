@@ -56,11 +56,12 @@ public class IllustrationService {
     }
 
     /**
-     * Schedules illustration generation for a single chapter (identified by paragraphId).
-     * Works for any heading paragraph, including "technical" chapters like Chapter Notes.
-     * Skips if the chapter already has MAX_SCENES_PER_CHAPTER illustrations.
+     * Schedules illustration generation for a single chapter.
+     * Works for any heading paragraph including "technical" ones (Chapter Notes, etc.).
+     * If force=true, deletes existing illustrations first and regenerates from scratch.
+     * Otherwise skips if the chapter already has MAX_SCENES_PER_CHAPTER illustrations.
      */
-    public void scheduleForChapter(Integer bookId, Integer paragraphId) {
+    public void scheduleForChapter(Integer bookId, Integer paragraphId, boolean force) {
         executor.submit(() -> {
             try {
                 List<Paragraph> all = paragraphRepo.findByBookIdOrderByPosition(bookId);
@@ -72,18 +73,22 @@ public class IllustrationService {
                     log.warn("Book {}: paragraph {} not found for single-chapter generation", bookId, paragraphId);
                     return;
                 }
+                if (force) {
+                    illustrationRepo.deleteByBookIdAndParagraphId(bookId, paragraphId);
+                    log.info("Book {}: cleared illustrations for chapter '{}' (force regenerate)", bookId, heading.getOriginalText());
+                }
                 long existing = illustrationRepo.countByBookIdAndParagraphId(bookId, paragraphId);
-                if (existing >= MAX_SCENES_PER_CHAPTER) {
+                if (!force && existing >= MAX_SCENES_PER_CHAPTER) {
                     log.info("Book {}: chapter '{}' already has {} illustrations, skipping",
                             bookId, heading.getOriginalText(), existing);
                     return;
                 }
-                log.info("Book {}: generating illustrations for single chapter '{}'", bookId, heading.getOriginalText());
+                log.info("Book {}: generating illustrations for chapter '{}'", bookId, heading.getOriginalText());
                 String fullText = extractFullChapter(all, heading);
                 generateScenesForChapter(bookId, heading, fullText, (int) existing);
-                log.info("Book {}: single-chapter generation complete for '{}'", bookId, heading.getOriginalText());
+                log.info("Book {}: chapter generation complete for '{}'", bookId, heading.getOriginalText());
             } catch (Exception e) {
-                log.warn("Book {}: single-chapter generation failed for paragraph {}: {}", bookId, paragraphId, e.getMessage());
+                log.warn("Book {}: chapter generation failed for paragraph {}: {}", bookId, paragraphId, e.getMessage());
             }
         });
     }

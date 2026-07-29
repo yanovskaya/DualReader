@@ -69,9 +69,6 @@ public class UploadController {
             List<String> excerpt = paragraphs.subList(0, Math.min(100, paragraphs.size()));
             coverService.scheduleGeneration(book.getId(), book.getTitle(), book.getAuthor(), excerpt);
 
-            // Generate chapter illustrations asynchronously
-            illustrationService.scheduleForBook(book.getId());
-
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", book.getId());
             m.put("title", book.getTitle());

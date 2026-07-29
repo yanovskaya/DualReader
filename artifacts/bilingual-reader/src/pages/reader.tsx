@@ -681,8 +681,9 @@ export default function ReaderPage() {
   });
 
   const generateChapterIllustrationMutation = useMutation({
-    mutationFn: async (paragraphId: number) => {
-      const res = await fetch(`/api/books/${bookId}/chapters/${paragraphId}/generate-illustrations`, { method: "POST" });
+    mutationFn: async ({ paragraphId, force = false }: { paragraphId: number; force?: boolean }) => {
+      const url = `/api/books/${bookId}/chapters/${paragraphId}/generate-illustrations${force ? "?force=true" : ""}`;
+      const res = await fetch(url, { method: "POST" });
       if (!res.ok) throw new Error("Failed to start generation");
     },
   });
@@ -1343,8 +1344,10 @@ export default function ReaderPage() {
             setShowToc(false);
           }}
           onGenerateIllustration={paraId => {
-            generateChapterIllustrationMutation.mutate(paraId);
-            setShowToc(false);
+            generateChapterIllustrationMutation.mutate({ paragraphId: paraId });
+          }}
+          onRegenerateIllustration={paraId => {
+            generateChapterIllustrationMutation.mutate({ paragraphId: paraId, force: true });
           }}
         />
       )}

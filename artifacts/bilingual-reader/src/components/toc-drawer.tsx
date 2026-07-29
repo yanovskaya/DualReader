@@ -1,6 +1,23 @@
-import { Image, Sparkles } from "lucide-react";
+import { Image, Sparkles, RefreshCw } from "lucide-react";
 import type { Chapter } from "@workspace/api-client-react/src/generated/api.schemas";
 import type { ThemeColors } from "@/hooks/use-reader-settings";
+
+// Shared icon button helpers to avoid repetition
+function iconBtnStyle(colors: ThemeColors): React.CSSProperties {
+  return {
+    flexShrink: 0, width: 40, display: "flex", alignItems: "center", justifyContent: "center",
+    background: "transparent", border: "none", cursor: "pointer", color: colors.muted,
+    borderLeft: `1px solid ${colors.border}`, transition: "color 0.15s, background 0.15s",
+  };
+}
+function hoverOn(e: React.MouseEvent, colors: ThemeColors) {
+  (e.currentTarget as HTMLElement).style.color = colors.accent;
+  (e.currentTarget as HTMLElement).style.background = `${colors.accent}10`;
+}
+function hoverOff(e: React.MouseEvent, colors: ThemeColors) {
+  (e.currentTarget as HTMLElement).style.color = colors.muted;
+  (e.currentTarget as HTMLElement).style.background = "transparent";
+}
 
 // Chapters that are purely technical — no illustrations offered
 function isNonChapter(title: string): boolean {
@@ -26,13 +43,14 @@ interface TocDrawerProps {
   currentChapterParaId: number | null;  // paragraph ID of current chapter
   illustrationMap: Map<number, string[]>; // paragraphId → array of imageUrls
   onShowIllustration: (paraId: number) => void;
-  onGenerateIllustration: (paraId: number) => void;  // for technical chapters without illustrations
+  onGenerateIllustration: (paraId: number) => void;   // generate (no illustrations yet)
+  onRegenerateIllustration: (paraId: number) => void; // force-regenerate (already has illustrations)
 }
 
 export function TocDrawer({
   chapters, colors, fontSize, onNavigate, onClose,
   readingPct, totalParagraphs,
-  currentChapterParaId, illustrationMap, onShowIllustration, onGenerateIllustration,
+  currentChapterParaId, illustrationMap, onShowIllustration, onGenerateIllustration, onRegenerateIllustration,
 }: TocDrawerProps) {
 
   // Use currentChapterParaId (set by scroll handler) for accurate highlighting
@@ -127,13 +145,7 @@ export function TocDrawer({
             const chPct = chapterReadPct(i);
             const isDone = chPct >= 1 && i < currentChapterIdx;
             const title = (ch as { originalText?: string }).originalText ?? "";
-            const technical = isNonChapter(title);
-            const hasIllustration = illustrationMap.get(ch.id)?.length ? true : false;
-            // Regular chapters: show image button only if illustrations exist
-            // Technical chapters: show image button if illustrations exist, OR generate button if none
-            const showImageBtn = !technical && illustrationMap.size > 0;
-            const showGenerateBtn = technical && !hasIllustration;
-            const showTechImageBtn = technical && hasIllustration;
+            const hasIllustration = !!(illustrationMap.get(ch.id)?.length);
 
             return (
               <div
@@ -197,62 +209,42 @@ export function TocDrawer({
                   </div>
                 </button>
 
-                {/* View illustration — regular chapters with illustrations */}
-                {(showImageBtn || showTechImageBtn) && (
+                {/* View illustration (shown when illustrations exist) */}
+                {hasIllustration && (
                   <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      onShowIllustration(ch.id);
-                      onClose();
-                    }}
-                    title="Иллюстрация главы"
-                    style={{
-                      flexShrink: 0,
-                      width: 44, display: "flex", alignItems: "center", justifyContent: "center",
-                      background: "transparent", border: "none", cursor: "pointer",
-                      color: colors.muted,
-                      borderLeft: `1px solid ${colors.border}`,
-                      transition: "color 0.15s, background 0.15s",
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLElement).style.color = colors.accent;
-                      (e.currentTarget as HTMLElement).style.background = `${colors.accent}10`;
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLElement).style.color = colors.muted;
-                      (e.currentTarget as HTMLElement).style.background = "transparent";
-                    }}
+                    onClick={e => { e.stopPropagation(); onShowIllustration(ch.id); onClose(); }}
+                    title="Посмотреть иллюстрации"
+                    style={iconBtnStyle(colors)}
+                    onMouseEnter={e => hoverOn(e, colors)}
+                    onMouseLeave={e => hoverOff(e, colors)}
                   >
                     <Image size={15} />
                   </button>
                 )}
 
-                {/* Generate illustration — technical chapters without illustrations */}
-                {showGenerateBtn && (
+                {/* Generate (no illustrations yet) */}
+                {!hasIllustration && (
                   <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      onGenerateIllustration(ch.id);
-                    }}
-                    title="Сгенерировать иллюстрацию"
-                    style={{
-                      flexShrink: 0,
-                      width: 44, display: "flex", alignItems: "center", justifyContent: "center",
-                      background: "transparent", border: "none", cursor: "pointer",
-                      color: colors.muted,
-                      borderLeft: `1px solid ${colors.border}`,
-                      transition: "color 0.15s, background 0.15s",
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLElement).style.color = colors.accent;
-                      (e.currentTarget as HTMLElement).style.background = `${colors.accent}10`;
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLElement).style.color = colors.muted;
-                      (e.currentTarget as HTMLElement).style.background = "transparent";
-                    }}
+                    onClick={e => { e.stopPropagation(); onGenerateIllustration(ch.id); onClose(); }}
+                    title="Сгенерировать иллюстрации"
+                    style={iconBtnStyle(colors)}
+                    onMouseEnter={e => hoverOn(e, colors)}
+                    onMouseLeave={e => hoverOff(e, colors)}
                   >
                     <Sparkles size={14} />
+                  </button>
+                )}
+
+                {/* Regenerate (illustrations exist — force redo) */}
+                {hasIllustration && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onRegenerateIllustration(ch.id); onClose(); }}
+                    title="Перегенерировать иллюстрации"
+                    style={iconBtnStyle(colors)}
+                    onMouseEnter={e => hoverOn(e, colors)}
+                    onMouseLeave={e => hoverOff(e, colors)}
+                  >
+                    <RefreshCw size={13} />
                   </button>
                 )}
               </div>

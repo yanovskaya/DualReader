@@ -70,13 +70,15 @@ public class IllustrationController {
         return ResponseEntity.ok(Map.of("status", "stopping"));
     }
 
-    // POST /books/:id/chapters/:paragraphId/generate-illustrations
-    // Generate illustrations for a single chapter (including technical ones like Chapter Notes)
+    // POST /books/:id/chapters/:paragraphId/generate-illustrations?force=true
+    // Generate (or regenerate) illustrations for a single chapter.
+    // force=true deletes existing illustrations first, then regenerates from scratch.
     @PostMapping("/books/{id}/chapters/{paragraphId}/generate-illustrations")
     public ResponseEntity<?> generateForChapter(
             @PathVariable Integer id,
-            @PathVariable Integer paragraphId) {
-        illustrationService.scheduleForChapter(id, paragraphId);
+            @PathVariable Integer paragraphId,
+            @RequestParam(name = "force", defaultValue = "false") boolean force) {
+        illustrationService.scheduleForChapter(id, paragraphId, force);
         return ResponseEntity.accepted().body(Map.of("status", "generating"));
     }
 
