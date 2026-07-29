@@ -161,14 +161,36 @@ public class IllustrationService {
     }
 
     /**
-     * Collects the full chapter body text (all paragraphs until the next heading).
-     * Capped at 14 000 characters so it fits comfortably in a GPT context window.
+     * Returns true only for headings that mark the START of a new chapter/part —
+     * NOT for meta-sections that appear inside chapters (e.g. "Chapter Notes",
+     * "Chapter End Notes", "End Notes", "Epilogue Notes", "See the end of the chapter…").
+     * Those meta blocks are part of AO3/fanfic structure and should be skipped so that
+     * the actual chapter prose that follows them is still collected.
+     */
+    private static boolean isRealChapterBoundary(String text) {
+        String lower = text.trim().toLowerCase();
+        // Known meta-heading patterns that live INSIDE a chapter, not between chapters
+        if (lower.equals("chapter notes") || lower.equals("chapter end notes")
+                || lower.equals("end notes")  || lower.equals("endnotes")
+                || lower.equals("notes")      || lower.equals("author's note")
+                || lower.equals("author note") || lower.equals("a/n")
+                || lower.startsWith("see the end") || lower.startsWith("end of chapter")
+                || lower.startsWith("note:") || lower.startsWith("a/n:")
+                || lower.matches(".*end\\s*notes.*")) return false;
+        return BookService.isHeading(text);
+    }
+
+    /**
+     * Collects the full chapter body text (all paragraphs until the next REAL chapter heading).
+     * Meta-sections that appear inside a chapter (Chapter Notes, End Notes, etc.) are skipped
+     * so that the actual prose following them is still included.
+     * Capped at 40 000 characters (~10k tokens) so it fits in a GPT context window.
      */
     private String extractFullChapter(List<Paragraph> all, Paragraph heading) {
         List<String> body = new ArrayList<>();
         for (Paragraph p : all) {
             if (p.getPosition() <= heading.getPosition()) continue;
-            if (BookService.isHeading(p.getOriginalText())) break;
+            if (isRealChapterBoundary(p.getOriginalText())) break;
             String text = p.getOriginalText().trim();
             if (!text.isEmpty()) body.add(text);
         }
