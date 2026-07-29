@@ -55,7 +55,7 @@ export function DictionaryCard({
   );
 
   // Treat "перевод недоступен" as a retriable failure (server returned it when AI was unavailable)
-  const isFallback = entry?.translations?.length === 1 && entry.translations[0] === "перевод недоступен";
+  const isFallback = !!entry?.translations?.some(t => t === "перевод недоступен");
 
   const retry = () => {
     queryClient.removeQueries({ queryKey });
