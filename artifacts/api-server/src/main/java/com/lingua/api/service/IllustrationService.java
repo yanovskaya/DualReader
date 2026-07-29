@@ -98,9 +98,8 @@ public class IllustrationService {
                     continue;
                 }
 
-                int toGen = MAX_SCENES_PER_CHAPTER - (int) existing;
-                String excerpt = extractSectionedExcerpt(all, heading, Math.max(1, toGen));
-                generateScenesForChapter(bookId, heading, excerpt, (int) existing);
+                String fullText = extractFullChapter(all, heading);
+                generateScenesForChapter(bookId, heading, fullText, (int) existing);
                 progressMap.computeIfPresent(bookId, (k, v) -> { v[0]++; return v; });
 
             } catch (InterruptedException ie) {
@@ -118,11 +117,10 @@ public class IllustrationService {
     }
 
     /**
-     * Divides the chapter body into {@code numSections} equal sections and returns
-     * a labelled excerpt with samples from each section so GPT sees the full arc.
+     * Collects the full chapter body text (all paragraphs until the next heading).
+     * Capped at 14 000 characters so it fits comfortably in a GPT context window.
      */
-    private String extractSectionedExcerpt(List<Paragraph> all, Paragraph heading, int numSections) {
-        // Collect ALL body paragraphs in this chapter (until the next heading)
+    private String extractFullChapter(List<Paragraph> all, Paragraph heading) {
         List<String> body = new ArrayList<>();
         for (Paragraph p : all) {
             if (p.getPosition() <= heading.getPosition()) continue;
@@ -130,66 +128,40 @@ public class IllustrationService {
             String text = p.getOriginalText().trim();
             if (!text.isEmpty()) body.add(text);
         }
-
         if (body.isEmpty()) return "";
-
-        // If the chapter is short enough to show in full, do so
-        if (body.size() <= numSections * 3) return String.join("\n\n", body);
-
-        int n = body.size();
-        StringBuilder result = new StringBuilder();
-
-        for (int s = 0; s < numSections; s++) {
-            int start = (int) Math.round((double) s / numSections * n);
-            int end   = (int) Math.round((double) (s + 1) / numSections * n);
-            end = Math.min(end, n);
-
-            result.append("=== SECTION ").append(s + 1).append(" of ").append(numSections).append(" ===\n");
-
-            List<String> section = body.subList(start, end);
-            if (section.size() <= 5) {
-                result.append(String.join("\n\n", section));
-            } else {
-                // First 2 + middle 1 + last 2 from this section
-                result.append(section.get(0)).append("\n\n");
-                result.append(section.get(1)).append("\n\n");
-                result.append("[...]\n\n");
-                result.append(section.get(section.size() / 2)).append("\n\n");
-                result.append("[...]\n\n");
-                result.append(section.get(section.size() - 2)).append("\n\n");
-                result.append(section.get(section.size() - 1));
-            }
-
-            if (s < numSections - 1) result.append("\n\n");
-        }
-
-        return result.toString();
+        String full = String.join("\n\n", body);
+        // Hard cap to keep token usage reasonable; ~14k chars ≈ 3 500 tokens
+        return full.length() > 14_000 ? full.substring(0, 14_000) + "\n[... chapter continues ...]" : full;
     }
 
     /**
      * Generates illustrations for key scenes in a chapter, starting from sceneOffset.
-     * Uses GPT to identify distinct key scenes, then generates one image per scene.
+     * GPT reads the full chapter text and writes ready-to-use image prompts directly.
      */
     private void generateScenesForChapter(Integer bookId, Paragraph heading,
-                                           String excerpt, int sceneOffset) throws Exception {
+                                           String fullText, int sceneOffset) throws Exception {
         int toGenerate = MAX_SCENES_PER_CHAPTER - sceneOffset;
         if (toGenerate <= 0) return;
 
-        List<String> sceneBriefs = identifyKeyScenes(heading.getOriginalText(), excerpt, toGenerate);
-        if (sceneBriefs.isEmpty()) {
+        List<String> imagePrompts = generateImagePrompts(heading.getOriginalText(), fullText, toGenerate);
+        if (imagePrompts.isEmpty()) {
             // Fallback: single illustration from chapter title
-            sceneBriefs = List.of((String) null);
+            imagePrompts = List.of(
+                "Interior chapter illustration for \"" + heading.getOriginalText() + "\". " +
+                "Dramatic literary scene, vivid and evocative. " +
+                "Style: professional digital painting, book illustration art, vibrant rich colors, " +
+                "cinematic atmosphere, tall portrait orientation (9:16). No text, no watermarks."
+            );
         }
 
-        for (int i = 0; i < sceneBriefs.size(); i++) {
+        for (int i = 0; i < imagePrompts.size(); i++) {
             if (stopFlags.contains(bookId)) {
                 log.info("Book {}: stop flag detected mid-chapter '{}', aborting remaining scenes",
                         bookId, heading.getOriginalText());
                 return;
             }
             try {
-                String brief = sceneBriefs.get(i);
-                String prompt = buildIllustrationPrompt(heading.getOriginalText(), brief);
+                String prompt = imagePrompts.get(i);
                 byte[] imageBytes = generateImageWithRetry(prompt, heading.getOriginalText(), 3);
                 if (imageBytes == null) {
                     log.warn("Book {}: illustration returned null for chapter '{}' scene {}",
@@ -207,7 +179,7 @@ public class IllustrationService {
                 log.info("Book {}: saved illustration for chapter '{}' scene {} ({} KB)",
                         bookId, heading.getOriginalText(), sceneOffset + i, imageBytes.length / 1024);
 
-                if (i < sceneBriefs.size() - 1) {
+                if (i < imagePrompts.size() - 1) {
                     Thread.sleep(3000);
                 }
             } catch (InterruptedException ie) {
@@ -221,44 +193,60 @@ public class IllustrationService {
     }
 
     /**
-     * Asks GPT to pick EXACTLY ONE scene from EACH numbered section of the pre-divided excerpt.
-     * This guarantees scenes come from different parts of the chapter.
+     * Reads the FULL chapter text and returns ready-to-use image generation prompts —
+     * GPT decides how many scenes (1–maxScenes), which moments to pick, and writes
+     * each prompt directly (no intermediate brief step).
      */
-    private List<String> identifyKeyScenes(String chapterTitle, String excerpt, int maxScenes) {
-        if (excerpt.isBlank()) return List.of();
+    private List<String> generateImagePrompts(String chapterTitle, String fullText, int maxScenes) {
+        if (fullText.isBlank()) return List.of();
         try {
-            String raw = openAiService.complete("gpt-4.1-nano", 900,
+            String styleBlock =
+                "Art style for every prompt: professional digital painting, book illustration art, " +
+                "vibrant rich colors, saturated jewel-toned palette, sharp crisp detail, " +
+                "soft luminous lighting, painterly brushwork, highly detailed faces and setting, " +
+                "cinematic atmosphere, tall portrait orientation (9:16), vertical composition. " +
+                "Characters must be beautiful and visually attractive — elegant features, graceful expressions. " +
+                "No text, no letters, no watermarks.";
+
+            String ageRule =
+                "Age rule: every character must be drawn at their EXACT stated age. " +
+                "Teenagers (13–17) look like real teenagers — not children, not adults. " +
+                "Young adults (18–25) look young but fully grown. Always include exact age in the prompt.";
+
+            String raw = openAiService.complete("gpt-4.1-mini", 1800,
                 List.of(
                     Map.of("role", "system", "content",
-                        "You are an art director illustrating a book chapter. " +
-                        "The chapter text is divided into " + maxScenes + " numbered sections below. " +
-                        "RULE: Choose EXACTLY ONE scene from EACH section — one scene per section, " + maxScenes + " scenes total. " +
-                        "Do NOT pick two scenes from the same section. " +
-                        "Within each section, pick the single most visually dramatic or emotionally distinct moment. " +
-                        "For each scene write a brief (max 60 words): character NAMES, their EXACT AGE " +
-                        "(e.g. '16-year-old', '35-year-old'), physical appearance, setting, mood, one specific action or emotional beat. " +
-                        "Age is MANDATORY — always state it explicitly. " +
-                        "Return a JSON array of exactly " + maxScenes + " strings in section order. No other text."),
+                        "You are both an art director and an AI image prompt engineer. " +
+                        "You will read a full book chapter and produce ready-to-use prompts for an AI image model. " +
+                        "\n\nYour task:\n" +
+                        "1. Read the chapter carefully and understand the full arc of events.\n" +
+                        "2. Choose between 1 and " + maxScenes + " scenes to illustrate " +
+                        "(short/transitional chapters → 1–2; medium → 2–3; long/rich → 4–5). " +
+                        "Spread the scenes across the chapter — beginning, middle, end. " +
+                        "Each scene must depict a DIFFERENT event or moment.\n" +
+                        "3. For each chosen scene, write one complete image generation prompt (100–150 words). " +
+                        "The prompt must include: exact setting description, character names and their EXACT AGE " +
+                        "(e.g. '16-year-old Harry'), physical appearance (hair, eyes, clothing), " +
+                        "the specific action or emotional beat happening, lighting, mood, and art style.\n" +
+                        "\n" + ageRule + "\n\n" + styleBlock + "\n\n" +
+                        "Return ONLY a JSON array of prompt strings, e.g. [\"prompt1\", \"prompt2\"]. No other text."),
                     Map.of("role", "user", "content",
-                        "Chapter: " + chapterTitle + "\n\n" +
-                        excerpt.substring(0, Math.min(6000, excerpt.length())))
+                        "Chapter title: " + chapterTitle + "\n\n" + fullText)
                 )
             );
 
-            // Parse JSON array
             String trimmed = raw.strip();
-            // Strip markdown code fences if present
             if (trimmed.startsWith("```")) {
                 trimmed = trimmed.replaceAll("(?s)^```[a-z]*\\n?", "").replaceAll("```$", "").strip();
             }
             ObjectMapper mapper = new ObjectMapper();
             @SuppressWarnings("unchecked")
-            List<String> scenes = mapper.readValue(trimmed, List.class);
-            // Cap at maxScenes
-            if (scenes.size() > maxScenes) scenes = scenes.subList(0, maxScenes);
-            return scenes;
+            List<String> prompts = mapper.readValue(trimmed, List.class);
+            if (prompts.size() > maxScenes) prompts = prompts.subList(0, maxScenes);
+            log.info("GPT generated {} image prompts for chapter '{}'", prompts.size(), chapterTitle);
+            return prompts;
         } catch (Exception e) {
-            log.warn("Key scene identification failed for '{}': {}", chapterTitle, e.getMessage());
+            log.warn("Image prompt generation failed for '{}': {}", chapterTitle, e.getMessage());
             return List.of();
         }
     }
@@ -283,32 +271,6 @@ public class IllustrationService {
         return null;
     }
 
-    private String buildIllustrationPrompt(String chapterTitle, String sceneBrief) {
-        String style =
-            "Style: professional digital painting, book illustration art, " +
-            "vibrant rich colors, saturated jewel-toned palette, sharp crisp detail, " +
-            "soft luminous lighting, painterly brushwork, highly detailed faces and setting, " +
-            "cinematic atmosphere, tall portrait orientation (9:16), vertical composition. " +
-            "Characters must be beautiful and visually attractive — elegant features, graceful expressions. " +
-            "No text, no letters, no watermarks.";
-
-        String ageGuard =
-            "IMPORTANT: Draw every character at their EXACT stated age. " +
-            "A 14-year-old must look 14; a 30-year-old must look 30. " +
-            "Teenagers (13–17) look like real teenagers — not children and not adults. " +
-            "Young adults (18–25) look young but fully grown. " +
-            "All characters must be attractive and pleasant-looking for their age.";
-
-        if (sceneBrief != null && !sceneBrief.isBlank()) {
-            return String.format("Interior chapter illustration. %s. %s %s",
-                    sceneBrief.strip(), ageGuard, style);
-        }
-        return String.format(
-            "Interior chapter illustration for \"%s\". " +
-            "Dramatic literary scene, vivid and evocative. %s",
-            chapterTitle, style
-        );
-    }
 
     public List<Map<String, Object>> getIllustrations(Integer bookId) {
         // Use metadata-only query to avoid loading imageData blobs into heap
