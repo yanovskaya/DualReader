@@ -15,6 +15,7 @@ com/lingua/api/controller/BookController.class
 com/lingua/api/service/EpubParser.class
 com/lingua/api/repository/ParagraphRepository.class
 com/lingua/api/config/CorsConfig.class
+com/lingua/api/config/IllustrationSchemaMigration.class
 com/lingua/api/repository/ChapterIllustrationRepository.class
 com/lingua/api/config/DatabaseConfig.class
 com/lingua/api/service/DictionaryService.class

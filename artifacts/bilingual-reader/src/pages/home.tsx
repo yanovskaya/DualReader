@@ -11,9 +11,8 @@ import { BookCoverArt } from "@/components/book-cover-art";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getStatusLabel(status?: string | null, progress?: number) {
-  if (status === "completed" && (progress ?? 100) >= 99) return { text: "Переведено", color: "#10b981" };
-  if (status === "completed" && (progress ?? 100) < 99) return { text: `Переведено ${progress}%`, color: "#f59e0b" };
+function getStatusLabel(status?: string | null) {
+  if (status === "completed") return { text: "Переведено", color: "#10b981" };
   if (status === "in_progress") return { text: "Переводится…", color: "#f59e0b" };
   return { text: "Ожидает", color: "#9ca3af" };
 }
@@ -48,7 +47,7 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
     setConfirming(false);
   }
 
-  const status = getStatusLabel((book as Book).translationStatus, progress);
+  const status = getStatusLabel((book as Book).translationStatus);
   const progress = (book.totalParagraphs ?? 0) > 0
     ? Math.round(((book as Book).translatedParagraphs / book.totalParagraphs!) * 100)
     : 0;
@@ -279,7 +278,7 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
         {/* Progress + Read CTA */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            {(book.totalParagraphs ?? 0) > 0 && progress < 99 && (
+            {(book as Book).translationStatus !== "completed" && (book.totalParagraphs ?? 0) > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 80, height: 3, background: "rgba(0,0,0,0.12)", borderRadius: 2, overflow: "hidden" }}>
                   <div style={{ width: `${progress}%`, height: "100%", background: "#f59e0b" }} />
@@ -289,7 +288,7 @@ function BookHeroCard({ book }: { book: Book | CachedBook }) {
                 </span>
               </div>
             )}
-            {progress >= 99 && (
+            {(book as Book).translationStatus === "completed" && (
               <span style={{ fontSize: 11, color: "#10b981", fontFamily: "system-ui,sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
                 <Clock size={11} /> Готово к чтению
               </span>

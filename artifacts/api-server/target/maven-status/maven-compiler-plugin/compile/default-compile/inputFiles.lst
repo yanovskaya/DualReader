@@ -17,6 +17,7 @@
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/LinguaApiApplication.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/controller/DictionaryController.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/OpenAiService.java
+/home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/config/IllustrationSchemaMigration.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/service/IllustrationService.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/model/Book.java
 /home/runner/workspace/artifacts/api-server/src/main/java/com/lingua/api/model/Paragraph.java

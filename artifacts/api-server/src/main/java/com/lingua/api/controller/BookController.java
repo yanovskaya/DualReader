@@ -159,14 +159,15 @@ public class BookController {
     @GetMapping("/books/{id}/translation-status")
     public ResponseEntity<?> translationStatus(@PathVariable Integer id) {
         return bookService.getBook(id).map(book -> {
-            int pct = book.getTotalParagraphs() > 0
-                    ? Math.round((float) book.getTranslatedParagraphs() / book.getTotalParagraphs() * 100)
-                    : 0;
+            // Count directly from paragraphs — book.translatedParagraphs counter can drift
+            long actualTranslated = paragraphRepo.countByBookIdAndIsTranslated(id, true);
+            int total = book.getTotalParagraphs();
+            int pct = total > 0 ? (int) Math.round((double) actualTranslated / total * 100) : 0;
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("bookId", book.getId());
             result.put("status", book.getTranslationStatus());
-            result.put("totalParagraphs", book.getTotalParagraphs());
-            result.put("translatedParagraphs", book.getTranslatedParagraphs());
+            result.put("totalParagraphs", total);
+            result.put("translatedParagraphs", (int) actualTranslated);
             result.put("progressPercent", pct);
             return ResponseEntity.ok(result);
         }).orElse(ResponseEntity.notFound().build());

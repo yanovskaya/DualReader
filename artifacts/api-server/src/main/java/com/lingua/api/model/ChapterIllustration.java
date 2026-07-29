@@ -7,7 +7,10 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "chapter_illustrations")
+@Table(name = "chapter_illustrations", uniqueConstraints = {
+    @UniqueConstraint(name = "chapter_illustrations_book_id_paragraph_id_scene_key",
+                      columnNames = {"book_id", "paragraph_id", "scene_index"})
+})
 @Data
 @NoArgsConstructor
 public class ChapterIllustration {
