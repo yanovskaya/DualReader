@@ -98,7 +98,8 @@ public class IllustrationService {
                     continue;
                 }
 
-                String excerpt = extractExcerpt(all, heading);
+                int toGen = MAX_SCENES_PER_CHAPTER - (int) existing;
+                String excerpt = extractSectionedExcerpt(all, heading, Math.max(1, toGen));
                 generateScenesForChapter(bookId, heading, excerpt, (int) existing);
                 progressMap.computeIfPresent(bookId, (k, v) -> { v[0]++; return v; });
 
@@ -116,7 +117,11 @@ public class IllustrationService {
         log.info("Book {}: illustration generation complete", bookId);
     }
 
-    private String extractExcerpt(List<Paragraph> all, Paragraph heading) {
+    /**
+     * Divides the chapter body into {@code numSections} equal sections and returns
+     * a labelled excerpt with samples from each section so GPT sees the full arc.
+     */
+    private String extractSectionedExcerpt(List<Paragraph> all, Paragraph heading, int numSections) {
         // Collect ALL body paragraphs in this chapter (until the next heading)
         List<String> body = new ArrayList<>();
         for (Paragraph p : all) {
@@ -127,27 +132,38 @@ public class IllustrationService {
         }
 
         if (body.isEmpty()) return "";
-        if (body.size() <= 9) return String.join("\n\n", body);
 
-        // Sample beginning + middle + end so GPT sees the full arc
-        List<String> sampled = new ArrayList<>();
+        // If the chapter is short enough to show in full, do so
+        if (body.size() <= numSections * 3) return String.join("\n\n", body);
+
         int n = body.size();
+        StringBuilder result = new StringBuilder();
 
-        // First 3
-        sampled.addAll(body.subList(0, 3));
-        sampled.add("[...]");
+        for (int s = 0; s < numSections; s++) {
+            int start = (int) Math.round((double) s / numSections * n);
+            int end   = (int) Math.round((double) (s + 1) / numSections * n);
+            end = Math.min(end, n);
 
-        // Middle 3
-        int mid = n / 2;
-        int mFrom = Math.max(3, mid - 1);
-        int mTo   = Math.min(n - 3, mid + 2);
-        if (mFrom < mTo) sampled.addAll(body.subList(mFrom, mTo));
-        sampled.add("[...]");
+            result.append("=== SECTION ").append(s + 1).append(" of ").append(numSections).append(" ===\n");
 
-        // Last 3
-        sampled.addAll(body.subList(n - 3, n));
+            List<String> section = body.subList(start, end);
+            if (section.size() <= 5) {
+                result.append(String.join("\n\n", section));
+            } else {
+                // First 2 + middle 1 + last 2 from this section
+                result.append(section.get(0)).append("\n\n");
+                result.append(section.get(1)).append("\n\n");
+                result.append("[...]\n\n");
+                result.append(section.get(section.size() / 2)).append("\n\n");
+                result.append("[...]\n\n");
+                result.append(section.get(section.size() - 2)).append("\n\n");
+                result.append(section.get(section.size() - 1));
+            }
 
-        return String.join("\n\n", sampled);
+            if (s < numSections - 1) result.append("\n\n");
+        }
+
+        return result.toString();
     }
 
     /**
@@ -200,29 +216,27 @@ public class IllustrationService {
     }
 
     /**
-     * Asks GPT to identify N distinct key scenes from DIFFERENT parts of the chapter,
-     * in chronological order, for sequential illustration.
+     * Asks GPT to pick EXACTLY ONE scene from EACH numbered section of the pre-divided excerpt.
+     * This guarantees scenes come from different parts of the chapter.
      */
     private List<String> identifyKeyScenes(String chapterTitle, String excerpt, int maxScenes) {
         if (excerpt.isBlank()) return List.of();
         try {
-            String raw = openAiService.complete("gpt-4.1-nano", 600,
+            String raw = openAiService.complete("gpt-4.1-nano", 900,
                 List.of(
                     Map.of("role", "system", "content",
-                        "You are an art director choosing scenes from a book chapter to illustrate sequentially. " +
-                        "The excerpt uses [...] to mark skipped passages — the chapter is longer than what is shown. " +
-                        "Decide how many scenes to illustrate (1 to " + maxScenes + "): " +
-                        "short/transitional chapters → 1–2; medium chapters → 2–3; long/rich chapters → 4–5. " +
-                        "CRITICAL RULE: Each scene MUST come from a DIFFERENT part of the chapter. " +
-                        "Spread them across the chapter arc — e.g. for 3 scenes: one from the beginning, one from the middle, one from the end. " +
-                        "Do NOT pick two scenes from the same moment or the same event. " +
-                        "Return them in chronological order (as they appear in the chapter). " +
-                        "For each scene write a brief (max 60 words): character NAMES, their EXACT AGE (e.g. '16-year-old', '35-year-old'), physical appearance, setting, mood, one specific dramatic action or emotional beat. " +
-                        "Age is mandatory — always state it explicitly so the illustrator draws characters at their correct age. " +
-                        "Return a JSON array of strings ONLY, e.g. [\"brief1\", \"brief2\"]. No other text."),
+                        "You are an art director illustrating a book chapter. " +
+                        "The chapter text is divided into " + maxScenes + " numbered sections below. " +
+                        "RULE: Choose EXACTLY ONE scene from EACH section — one scene per section, " + maxScenes + " scenes total. " +
+                        "Do NOT pick two scenes from the same section. " +
+                        "Within each section, pick the single most visually dramatic or emotionally distinct moment. " +
+                        "For each scene write a brief (max 60 words): character NAMES, their EXACT AGE " +
+                        "(e.g. '16-year-old', '35-year-old'), physical appearance, setting, mood, one specific action or emotional beat. " +
+                        "Age is MANDATORY — always state it explicitly. " +
+                        "Return a JSON array of exactly " + maxScenes + " strings in section order. No other text."),
                     Map.of("role", "user", "content",
                         "Chapter: " + chapterTitle + "\n\n" +
-                        excerpt.substring(0, Math.min(2000, excerpt.length())))
+                        excerpt.substring(0, Math.min(6000, excerpt.length())))
                 )
             );
 
