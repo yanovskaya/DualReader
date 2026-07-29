@@ -163,8 +163,8 @@ public class IllustrationService {
         }
         if (body.isEmpty()) return "";
         String full = String.join("\n\n", body);
-        // Hard cap to keep token usage reasonable; ~14k chars ≈ 3 500 tokens
-        return full.length() > 14_000 ? full.substring(0, 14_000) + "\n[... chapter continues ...]" : full;
+        // Cap at 40k chars (~10k tokens) — covers even very long chapters fully
+        return full.length() > 40_000 ? full.substring(0, 40_000) + "\n[... chapter continues ...]" : full;
     }
 
     /**
