@@ -15,16 +15,17 @@ public class DictionaryController {
 
     private final DictionaryService dictionaryService;
 
-    // GET /dictionary/lookup?word=...&context=...
+    // GET /dictionary/lookup?word=...&context=...&force=false
     @GetMapping("/lookup")
     public ResponseEntity<?> lookup(
             @RequestParam(required = false) String word,
-            @RequestParam(required = false) String context) {
+            @RequestParam(required = false) String context,
+            @RequestParam(defaultValue = "false") boolean force) {
         if (word == null || word.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing required parameter: word"));
         }
         try {
-            return ResponseEntity.ok(dictionaryService.lookup(word, context));
+            return ResponseEntity.ok(dictionaryService.lookup(word, context, force));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", "Dictionary lookup failed"));
         }

@@ -161,5 +161,6 @@ limit?: number;
 export type LookupWordParams = {
 word: string;
 context?: string;
+force?: boolean;
 };
 

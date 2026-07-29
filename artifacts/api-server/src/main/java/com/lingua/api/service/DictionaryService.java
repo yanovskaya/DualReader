@@ -44,28 +44,37 @@ public class DictionaryService {
     }
 
     public Map<String, Object> lookup(String word, String context) {
+        return lookup(word, context, false);
+    }
+
+    public Map<String, Object> lookup(String word, String context, boolean force) {
         String normalizedWord = word.toLowerCase().trim();
 
-        // Check cache
-        List<Map<String, Object>> cached = jdbc.query(
-                "SELECT * FROM dictionary_lookups WHERE word = ? ORDER BY looked_up_at DESC LIMIT 1",
-                LOOKUP_MAPPER, normalizedWord);
+        if (!force) {
+            // Check cache
+            List<Map<String, Object>> cached = jdbc.query(
+                    "SELECT * FROM dictionary_lookups WHERE word = ? ORDER BY looked_up_at DESC LIMIT 1",
+                    LOOKUP_MAPPER, normalizedWord);
 
-        if (!cached.isEmpty()) {
-            Map<String, Object> entry = cached.get(0);
-            List<?> translations = (List<?>) entry.get("translations");
-            List<?> synonyms = (List<?>) entry.get("synonyms");
-            // Skip cached fallback results ("перевод недоступен") — always re-fetch
-            boolean isCachedFallback = translations != null && translations.size() == 1
-                    && "перевод недоступен".equals(translations.get(0).toString());
-            boolean hasSynonyms = synonyms != null && synonyms.stream().anyMatch(s -> !s.toString().isBlank());
-            if (!isCachedFallback && hasSynonyms) {
-                // Update timestamp
-                jdbc.update("UPDATE dictionary_lookups SET looked_up_at = NOW() WHERE word = ? AND looked_up_at = (SELECT MAX(looked_up_at) FROM dictionary_lookups WHERE word = ?)",
-                        normalizedWord, normalizedWord);
-                entry.put("lookedUpAt", Instant.now().toString());
-                return entry;
+            if (!cached.isEmpty()) {
+                Map<String, Object> entry = cached.get(0);
+                List<?> translations = (List<?>) entry.get("translations");
+                List<?> synonyms = (List<?>) entry.get("synonyms");
+                // Skip cached fallback results ("перевод недоступен") — always re-fetch
+                boolean isCachedFallback = translations != null && translations.size() == 1
+                        && "перевод недоступен".equals(translations.get(0).toString());
+                boolean hasSynonyms = synonyms != null && synonyms.stream().anyMatch(s -> !s.toString().isBlank());
+                if (!isCachedFallback && hasSynonyms) {
+                    // Update timestamp
+                    jdbc.update("UPDATE dictionary_lookups SET looked_up_at = NOW() WHERE word = ? AND looked_up_at = (SELECT MAX(looked_up_at) FROM dictionary_lookups WHERE word = ?)",
+                            normalizedWord, normalizedWord);
+                    entry.put("lookedUpAt", Instant.now().toString());
+                    return entry;
+                }
             }
+        } else {
+            // force=true: delete existing cached entry so fresh result takes its place
+            jdbc.update("DELETE FROM dictionary_lookups WHERE word = ?", normalizedWord);
         }
 
         // Call OpenAI

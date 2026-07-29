@@ -1,6 +1,7 @@
-import { useLookupWord, getLookupWordQueryKey } from "@workspace/api-client-react";
+import { useLookupWord, getLookupWordQueryKey, lookupWord } from "@workspace/api-client-react";
 import { Loader2, X, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 interface DictionaryPanelProps {
   word: string;
@@ -22,7 +23,19 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
     { query: { enabled: !!clean, queryKey } }
   );
 
-  const refresh = () => queryClient.removeQueries({ queryKey });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const fresh = await lookupWord({ word: clean, context, force: true });
+      queryClient.setQueryData(queryKey, fresh);
+    } catch {
+      // silently fail
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const content = () => {
     if (isLoading) return (
@@ -76,9 +89,10 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
         <button
           onClick={refresh}
           title="Перегенерировать"
-          style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: mutedColor, flexShrink: 0 }}
+          disabled={isRefreshing}
+          style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: isRefreshing ? "default" : "pointer", color: mutedColor, flexShrink: 0 }}
         >
-          <RefreshCw size={11} />
+          <RefreshCw size={11} style={isRefreshing ? { animation: "spin 1s linear infinite" } : undefined} />
         </button>
       </div>
     );
@@ -91,9 +105,10 @@ export function DictionaryPanel({ word, context, onClose, inline, textColor = "#
       <button
         onClick={refresh}
         title="Перегенерировать"
-        style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", color: mutedColor, flexShrink: 0 }}
+        disabled={isRefreshing}
+        style={{ height: 22, width: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "transparent", border: "none", cursor: isRefreshing ? "default" : "pointer", color: mutedColor, flexShrink: 0 }}
       >
-        <RefreshCw size={11} />
+        <RefreshCw size={11} style={isRefreshing ? { animation: "spin 1s linear infinite" } : undefined} />
       </button>
       <button
         onClick={onClose}

@@ -1,7 +1,8 @@
-import { useLookupWord, getLookupWordQueryKey } from "@workspace/api-client-react";
+import { useLookupWord, getLookupWordQueryKey, lookupWord } from "@workspace/api-client-react";
 import { Loader2, BookOpen, RefreshCw } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 interface DictionaryPopoverProps {
   word: string;
@@ -40,6 +41,7 @@ export function DictionaryCard({
   const cleanWord = word.toLowerCase().replace(/[^\w\s-]/g, "").trim();
   const queryClient = useQueryClient();
   const queryKey = getLookupWordQueryKey({ word: cleanWord, context });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { data: entry, isLoading, isError } = useLookupWord(
     { word: cleanWord, context },
@@ -57,8 +59,16 @@ export function DictionaryCard({
   // Treat "перевод недоступен" as a retriable failure (server returned it when AI was unavailable)
   const isFallback = !!entry?.translations?.some(t => t === "перевод недоступен");
 
-  const refresh = () => {
-    queryClient.removeQueries({ queryKey });
+  const refresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const fresh = await lookupWord({ word: cleanWord, context, force: true });
+      queryClient.setQueryData(queryKey, fresh);
+    } catch {
+      // silently fail
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   if (isLoading) {
@@ -108,11 +118,12 @@ export function DictionaryCard({
         <button
           onClick={refresh}
           title="Перегенерировать перевод"
-          style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: mutedColor, padding: 2, borderRadius: 4, flexShrink: 0 }}
-          onMouseEnter={e => (e.currentTarget.style.color = accentColor)}
+          disabled={isRefreshing}
+          style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: isRefreshing ? "default" : "pointer", color: mutedColor, padding: 2, borderRadius: 4, flexShrink: 0 }}
+          onMouseEnter={e => { if (!isRefreshing) e.currentTarget.style.color = accentColor; }}
           onMouseLeave={e => (e.currentTarget.style.color = mutedColor)}
         >
-          <RefreshCw size={13} />
+          <RefreshCw size={13} style={isRefreshing ? { animation: "spin 1s linear infinite" } : undefined} />
         </button>
       </div>
 

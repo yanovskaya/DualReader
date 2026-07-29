@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import {
   useGetBook,
@@ -12,6 +12,7 @@ import {
   useGenerateIllustrations,
   useLookupWord,
   getLookupWordQueryKey,
+  lookupWord,
 } from "@workspace/api-client-react";
 import { useParagraphsOffline } from "@/hooks/use-paragraphs-offline";
 import { saveBook, loadBook, saveParagraphPage } from "@/lib/idb";
@@ -62,12 +63,16 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
     return context.slice(start, end + 1).trim().slice(0, 300);
   })();
 
-  const { data: entry, isLoading, isError, isFetching, refetch } = useLookupWord(
+  const queryKey = getLookupWordQueryKey({ word: clean, context: shortContext });
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { data: entry, isLoading, isError, isFetching } = useLookupWord(
     { word: clean, context: shortContext },
     {
       query: {
         enabled: !!clean,
-        queryKey: getLookupWordQueryKey({ word: clean, context: shortContext }),
+        queryKey,
         retry: 2,
         retryDelay: 1500,
         staleTime: 1000 * 60 * 60 * 24 * 7,
@@ -75,7 +80,19 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
     }
   );
 
-  if (isLoading || isFetching) return (
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const fresh = await lookupWord({ word: clean, context: shortContext, force: true });
+      queryClient.setQueryData(queryKey, fresh);
+    } catch {
+      // silently fail — user can try again
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  if (isLoading || (isFetching && !entry)) return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: colors.muted }}>
       <Loader2 size={14} style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
       <span>Ищем «{word}»…</span>
@@ -85,7 +102,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontSize: 14, color: colors.muted }}>Не удалось загрузить перевод «{word}».</div>
       <button
-        onClick={() => refetch()}
+        onClick={handleRefresh}
         style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           gap: 6, padding: "10px 20px", borderRadius: 24,
@@ -115,13 +132,14 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
           </span>
         )}
         <button
-          onClick={() => refetch()}
+          onClick={handleRefresh}
           title="Перегенерировать перевод"
-          style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", cursor: "pointer", color: colors.muted, padding: 4, borderRadius: 6, flexShrink: 0 }}
-          onMouseEnter={e => (e.currentTarget.style.color = colors.accent)}
+          disabled={isRefreshing}
+          style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", cursor: isRefreshing ? "default" : "pointer", color: colors.muted, padding: 4, borderRadius: 6, flexShrink: 0 }}
+          onMouseEnter={e => { if (!isRefreshing) e.currentTarget.style.color = colors.accent; }}
           onMouseLeave={e => (e.currentTarget.style.color = colors.muted)}
         >
-          <RefreshCw size={15} />
+          <RefreshCw size={15} style={isRefreshing ? { animation: "spin 1s linear infinite" } : undefined} />
         </button>
       </div>
 
