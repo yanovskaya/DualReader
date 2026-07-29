@@ -157,7 +157,7 @@ function WordDict({ word, context, colors }: { word: string; context: string; co
 }
 
 // ── Settings bottom sheet ──────────────────────────────────────────────────────
-function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign, scrollSpeed, setScrollSpeed, onRegenerateIllustrations, isRegenerating, illustrationStatus }: {
+function SettingsSheet({ colors, settings, onClose, setTheme, setFontSize, setFontFamily, setLineSpacing, setMargin, setTextAlign, scrollSpeed, setScrollSpeed, onRegenerateIllustrations, isRegenerating, illustrationStatus, onStopIllustrations }: {
   colors: ThemeColors;
   settings: ReturnType<typeof useReaderSettings>["settings"];
   onClose: () => void;
