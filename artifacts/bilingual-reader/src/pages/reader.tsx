@@ -466,6 +466,7 @@ export default function ReaderPage() {
   const currentBatchRef = useRef(initBatch);
   const [totalBatches, setTotalBatches] = useState(1);
   const [allParagraphs, setAllParagraphs] = useState<Paragraph[]>([]);
+  const allParagraphsRef = useRef<Paragraph[]>([]);
   const loadingNextBatch = useRef(false);
 
   // Paragraph-ID based restore: null = nothing pending, number = scroll to this paragraph
@@ -732,6 +733,7 @@ export default function ReaderPage() {
     });
   }, [allParagraphs]);
   useEffect(() => { displayParagraphsRef.current = displayParagraphs; }, [displayParagraphs]);
+  useEffect(() => { allParagraphsRef.current = allParagraphs; }, [allParagraphs]);
 
   // Infinite scroll — load next batch when sentinel becomes visible
   useEffect(() => {
@@ -756,7 +758,14 @@ export default function ReaderPage() {
   const navigateToChapter = useCallback((paragraphId: number, position: number) => {
     const neededBatch = Math.ceil((position + 1) / PAGE_SIZE);
     setPendingScrollId(paragraphId);
-    setCurrentBatch(prev => Math.max(prev, neededBatch));
+    setCurrentBatch(prev => {
+      // Forward navigation: always load the needed batch.
+      if (neededBatch > prev) return neededBatch;
+      // Backward navigation: if the paragraph is already in memory, no batch change needed.
+      // If NOT in memory (e.g. user jumped here via bookmark), load it.
+      const alreadyLoaded = allParagraphsRef.current.some(p => p.id === paragraphId);
+      return alreadyLoaded ? prev : neededBatch;
+    });
   }, []);
 
   // Remember this book as last opened
