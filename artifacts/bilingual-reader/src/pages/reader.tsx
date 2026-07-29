@@ -546,6 +546,9 @@ export default function ReaderPage() {
   const [showSearch, setShowSearch] = useState(false);
   const [showIllustration, setShowIllustration] = useState(false);
   const [currentChapterParaId, setCurrentChapterParaId] = useState<number | null>(null);
+  // Separate from currentChapterParaId so opening the illustration viewer
+  // doesn't change the TOC scroll-based highlight
+  const [viewingIllustrationParaId, setViewingIllustrationParaId] = useState<number | null>(null);
   const [generatingParaIds, setGeneratingParaIds] = useState<Set<number>>(new Set());
   // minClearTime: for force-regen we wait ≥8s before accepting a non-zero count
   // (gives the backend time to delete old illustrations before new ones arrive)
@@ -693,7 +696,7 @@ export default function ReaderPage() {
 
   // Carousel index per chapter (resets when chapter changes)
   const [illustrationIndex, setIllustrationIndex] = useState(0);
-  useEffect(() => { setIllustrationIndex(0); }, [currentChapterParaId]);
+  useEffect(() => { setIllustrationIndex(0); }, [viewingIllustrationParaId]);
   const regenerateIllustrationsMutation = useGenerateIllustrations();
 
   const stopIllustrationsMutation = useMutation({
@@ -1377,7 +1380,7 @@ export default function ReaderPage() {
           currentChapterParaId={currentChapterParaId}
           illustrationMap={illustrationMap}
           onShowIllustration={paraId => {
-            setCurrentChapterParaId(paraId);
+            setViewingIllustrationParaId(paraId);
             setShowIllustration(true);
             setShowToc(false);
           }}
@@ -1430,13 +1433,13 @@ export default function ReaderPage() {
 
       {/* ── Illustration panel ───────────────────────────────────────── */}
       {showIllustration && (() => {
-        const ilUrls = currentChapterParaId != null
-          ? (illustrationMap.get(currentChapterParaId) ?? [])
+        const ilUrls = viewingIllustrationParaId != null
+          ? (illustrationMap.get(viewingIllustrationParaId) ?? [])
           : [];
         const clampedIdx = Math.min(illustrationIndex, Math.max(0, ilUrls.length - 1));
         const ilUrl = ilUrls[clampedIdx] ?? null;
-        const currentChapter = currentChapterParaId != null
-          ? chapters.find((ch: { id: number }) => ch.id === currentChapterParaId)
+        const currentChapter = viewingIllustrationParaId != null
+          ? chapters.find((ch: { id: number }) => ch.id === viewingIllustrationParaId)
           : null;
         const chapterTitle = (currentChapter as { text?: string } | null)?.text ?? null;
 
@@ -1469,11 +1472,11 @@ export default function ReaderPage() {
             </button>
 
             {/* Regenerate button — top left */}
-            {currentChapterParaId != null && (
+            {viewingIllustrationParaId != null && (
               <button
                 onClick={e => {
                   e.stopPropagation();
-                  generateChapterIllustrationMutation.mutate({ paragraphId: currentChapterParaId, force: true });
+                  generateChapterIllustrationMutation.mutate({ paragraphId: viewingIllustrationParaId, force: true });
                   setShowIllustration(false);
                   setShowToc(true);
                 }}

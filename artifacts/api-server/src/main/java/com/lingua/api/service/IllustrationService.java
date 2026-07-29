@@ -264,8 +264,10 @@ public class IllustrationService {
                         "You will read a full book chapter and produce ready-to-use prompts for an AI image model. " +
                         "\n\nYour task:\n" +
                         "1. Read the chapter carefully and understand the full arc of events.\n" +
-                        "2. Choose between 1 and " + maxScenes + " scenes to illustrate " +
-                        "(short/transitional chapters → 1–2; medium → 3–4; long/rich chapters → 5–8). " +
+                        "2. Choose between 1 and " + maxScenes + " scenes to illustrate. " +
+                        "Aim for at least 3–4 scenes for any real narrative chapter. " +
+                        "Only go below 3 if the chapter is extremely short (under 500 words) or a purely technical notes section. " +
+                        "Long, rich chapters → 6–" + maxScenes + " scenes. " +
                         "Prioritize the most dramatic, emotional, and visually interesting moments. " +
                         "Spread the scenes across the chapter — beginning, middle, end. " +
                         "Each scene must depict a DIFFERENT event or moment.\n" +
